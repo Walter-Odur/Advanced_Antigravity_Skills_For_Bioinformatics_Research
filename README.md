@@ -1,6 +1,5 @@
 # 🧬 Advanced Antigravity Skills for Bioinformatics Research
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Skills](https://img.shields.io/badge/Skills-Bioinformatics-green.svg)](#available-skills)
 [![Citations](https://img.shields.io/badge/Citations-60%2B-orange.svg)](#references)
 
@@ -196,9 +195,6 @@ All skills in this repository must meet these standards:
 
 ---
 
-## 📄 License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
 
