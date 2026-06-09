@@ -171,33 +171,6 @@ The skills in this repository are grounded in methodology from 60+ peer-reviewed
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome! If you'd like to add a new bioinformatics skill or improve an existing one:
-
-1. Fork this repository
-2. Create a new skill directory following the structure in existing skills
-3. Ensure your skill includes:
-   - `SKILL.md` with YAML frontmatter (`name`, `description`, `risk`, `source`)
-   - `references/` with literature-backed methodology guides
-   - `examples/` with a working reference implementation
-4. Submit a pull request with a description of the skill and its target audience
-
-### Skill Quality Standards
-
-All skills in this repository must meet these standards:
-
-- **Literature-backed**: Cite peer-reviewed publications for methodological choices
-- **Complete examples**: Include working reference implementations, not just documentation
-- **Publication-ready**: Code should produce results suitable for academic publication
-- **Cross-platform**: Handle Windows/Linux/macOS differences (e.g., threading, paths)
-- **Error handling**: Include troubleshooting sections for common failure modes
-
----
-
-
----
-
 ## 👤 Author
 
 **Walter Odur**
