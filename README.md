@@ -1,7 +1,7 @@
 # 🧬 Advanced Antigravity Skills for Bioinformatics Research
 
-[![Skills](https://img.shields.io/badge/Skills-Bioinformatics-green.svg)](#available-skills)
-[![Citations](https://img.shields.io/badge/Citations-60%2B-orange.svg)](#references)
+[![Skills](https://img.shields.io/badge/Skills-2-green.svg)](#available-skills)
+[![Citations](https://img.shields.io/badge/Citations-70%2B-orange.svg)](#references)
 
 A curated collection of **advanced [Antigravity IDE](https://github.com/google-deepmind/antigravity) skills** purpose-built for computational biology, bioinformatics, and translational research. Each skill is a comprehensive, literature-backed pipeline that encodes best practices from high-impact peer-reviewed journals (*Nature*, *Cell*, *Nature Methods*, *Genome Biology*, *Nature Machine Intelligence*).
 
@@ -74,6 +74,79 @@ scRNA-seq Data → QC & Preprocessing → Ensemble ML Training → SHAP Signatur
 
 ---
 
+### 2. `manuscript-writing-nature`
+
+**Advanced scientific manuscript writing skill with journal-specific profiles, an automated 10-pass structural quality audit, and a deep iterative AI self-review engine with 12 critical lenses.**
+
+| Metric | Value |
+|---|---|
+| **Lines of code/docs** | 3,711 |
+| **Files** | 17 |
+| **Review lenses** | 12 |
+| **Exemplary papers** | 9 (Nature, Cell, Science, Nat Rev Genet, Nat Mach Intell) |
+| **Output formats** | LaTeX + DOCX |
+
+#### Pipeline Overview
+
+```
+Journal Selection → Story Arc → Figures First → Drafting → 10-Pass Audit → Deep AI Review → Formatting → Submission
+```
+
+#### What It Does
+
+| Step | Description |
+|---|---|
+| **1. Journal Selection** | Scope check, 90-second test, acceptance rate assessment |
+| **2. Story Arc** | Hook → Context → Gap → Approach → Finding → Impact framework |
+| **3. Figures First** | Visual narrative before text, self-explanatory captions |
+| **4. Section Drafting** | Methods → Results → Discussion → Intro → Abstract → Title order |
+| **5a. Structural Audit** | 10-pass automated + manual checks (word count, citations, stats, figures) |
+| **5b. Deep AI Review** | 12-lens iterative review until zero concerns (narrative, AI vocab, biology, clarity) |
+| **6–8. Submission** | Formatting, cover letter, revision handling with rebuttal templates |
+
+#### The 12 Review Lenses
+
+| Lens | What It Checks |
+|---|---|
+| Narrative flow | Logical transitions, story momentum |
+| Figure captions | Self-explanatory? Statistics included? |
+| Biological interpretation | Grounded in high-impact literature? |
+| AI vocabulary | Detects and eliminates 20+ AI cliché patterns |
+| Clarity & precision | Unambiguous pronouns, specific numbers |
+| Methods reproducibility | Could someone replicate from Methods alone? |
+| Data-claim alignment | Every claim traceable to data |
+| Logical consistency | Numbers match across sections |
+| Impact framing | "So what?" test on every section |
+| Tone & register | Confident without arrogance |
+| Completeness | Abbreviations, limitations, alternatives |
+| Reader experience | Would you accept as a reviewer? |
+
+#### Reference Documentation
+
+| Document | Coverage |
+|---|---|
+| `nature_guide.md` | Complete Nature author guide: structure, word limits, figure specs, references |
+| `writing_style.md` | Narrative hooks, funnel structure, active voice, power words, abstract formula |
+| `ai_review_protocol.md` | Deep iterative 12-lens self-review with naive reader test and convergence criteria |
+| `quality_checklist.md` | 10-pass structural audit with checklists for each pass |
+| `exemplary_articles.md` | 9 real top papers (AlphaFold, CMap, Scanpy, SHAP) with style lessons |
+| `statistical_reporting.md` | P-values, effect sizes, ML metrics, enrichment, survival analysis |
+| `figure_standards.md` | Dimensions, DPI, color-blind palettes, Extended Data vs Supplementary |
+| `reviewer_expectations.md` | Top 10 rejection reasons, rebuttal format, reviewer simulation |
+| `citation_formatting.md` | Nature citation style, BibTeX templates, journal abbreviations |
+| `data_code_availability.md` | FAIR principles, repository requirements, template statements |
+
+#### Automated Scripts
+
+| Script | Purpose |
+|---|---|
+| `quality_check.py` | Automated quality engine — checks structure, word count, acronyms, figures |
+| `scaffold_manuscript.py` | Generates complete project directory with LaTeX/DOCX templates |
+| `word_counter.py` | Section-by-section word counting with journal limit comparison |
+| `citation_validator.py` | Validates BibTeX against manuscript — finds missing/uncited references |
+
+---
+
 ## 🚀 Installation
 
 ### Option 1: Install a single skill
@@ -87,14 +160,23 @@ git clone https://github.com/Walter-Odur/Advanced_Antigravity_Skills_For_Bioinfo
 # Copy the skill you need
 cp -r Advanced_Antigravity_Skills_For_Bioinformatics_Research/scrna-drug-repurposing \
       ~/.gemini/config/skills/scrna-drug-repurposing
+
+# Or the manuscript writing skill
+cp -r Advanced_Antigravity_Skills_For_Bioinformatics_Research/manuscript-writing-nature \
+      ~/.gemini/config/skills/manuscript-writing
 ```
 
 **Windows (PowerShell):**
 ```powershell
 git clone https://github.com/Walter-Odur/Advanced_Antigravity_Skills_For_Bioinformatics_Research.git
 
+# scRNA-seq skill
 Copy-Item -Recurse "Advanced_Antigravity_Skills_For_Bioinformatics_Research\scrna-drug-repurposing" `
     "$env:USERPROFILE\.gemini\config\skills\scrna-drug-repurposing"
+
+# Manuscript writing skill
+Copy-Item -Recurse "Advanced_Antigravity_Skills_For_Bioinformatics_Research\manuscript-writing-nature" `
+    "$env:USERPROFILE\.gemini\config\skills\manuscript-writing"
 ```
 
 ### Option 2: Install all skills
@@ -132,6 +214,7 @@ Each skill includes:
 | Skill | Domain | Status |
 |---|---|---|
 | `scrna-drug-repurposing` | scRNA-seq → ML → Drug Repurposing | ✅ **Available** |
+| `manuscript-writing-nature` | Scientific manuscript writing for Nature | ✅ **Available** |
 | `spatial-transcriptomics` | Spatial gene expression analysis (Visium, MERFISH, Slide-seq) | 🔜 Planned |
 | `multi-omics-integration` | Integrating transcriptomics, proteomics, metabolomics | 🔜 Planned |
 | `crispr-screen-analysis` | Genome-wide CRISPR screen hit calling and pathway analysis | 🔜 Planned |
@@ -144,7 +227,7 @@ Each skill includes:
 
 ## 📚 References
 
-The skills in this repository are grounded in methodology from 60+ peer-reviewed publications. Key references:
+The skills in this repository are grounded in methodology from 70+ peer-reviewed publications. Key references:
 
 ### Core Pipeline
 1. Subramanian A, et al. (2017). A Next Generation Connectivity Map. *Cell*, 171(6):1437–1452
@@ -166,6 +249,11 @@ The skills in this repository are grounded in methodology from 60+ peer-reviewed
 11. Pushpakom S, et al. (2019). Drug repurposing: progress and recommendations. *Nat Rev Drug Discov*, 18:41–58
 12. Corsello SM, et al. (2020). Discovering anticancer potential of non-oncology drugs. *Nat Cancer*, 1:235–248
 13. Lamb J, et al. (2006). The Connectivity Map. *Science*, 313(5795):1929–1935
+
+### Manuscript Writing
+14. Jumper J, et al. (2021). Highly accurate protein structure prediction with AlphaFold. *Nature*, 596:583–589
+15. Gideon HP, et al. (2022). Multimodal profiling of lung granulomas in macaques. *Immunity*, 55:827–846
+16. Kaufmann SHE, et al. (2018). Host-directed therapies for bacterial and viral infections. *Nat Rev Drug Discov*, 17:35–56
 
 > See individual skill `references/` directories for the complete citation list.
 

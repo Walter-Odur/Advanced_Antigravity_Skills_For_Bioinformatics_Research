@@ -1,0 +1,196 @@
+# Nature Journal Profile
+# ========================
+# Official parameters from Nature author guidelines
+# Last verified: 2025
+
+journal:
+  name: "Nature"
+  publisher: "Springer Nature"
+  url: "https://www.nature.com"
+  author_guidelines: "https://www.nature.com/nature/for-authors"
+  acceptance_rate: "<8%"
+  impact_factor: "~70"
+  scope: "Multidisciplinary science — significant advances with broad interest"
+
+# ── Article Types ──
+article_types:
+  article:
+    description: "Full-length research paper (unified format since 2019, Letters retired)"
+    main_text_words: 3000        # Excluding Methods, refs, legends
+    summary_words: 200            # Bolded, unstructured paragraph
+    methods_words: null            # Unlimited (online-only)
+    reference_limit: 50
+    display_items: 6              # Figures + tables combined
+    extended_data_items: 10       # Extended Data figures/tables
+    supplementary: true           # Supplementary Information allowed
+
+  review:
+    description: "Commissioned review articles"
+    main_text_words: 6000
+    summary_words: 200
+    reference_limit: 100
+    display_items: 8
+
+  perspective:
+    description: "Opinion/commentary piece"
+    main_text_words: 3000
+    summary_words: 150
+    reference_limit: 30
+    display_items: 4
+
+# ── Manuscript Structure ──
+structure:
+  order:
+    - title
+    - authors_affiliations
+    - summary                     # Nature calls it "Summary" not "Abstract"
+    - main_body                   # No section headers for Articles
+    - methods                     # Online Methods (after references in print)
+    - references
+    - acknowledgements
+    - author_contributions
+    - competing_interests
+    - additional_information
+    - extended_data
+    - supplementary_information
+  
+  main_body_sections:             # Logical structure (no headers in Nature Articles)
+    - introduction                # Background, gap, objective (~500 words)
+    - results                     # Core findings (~1500 words)
+    - discussion                  # Interpretation + implications (~1000 words)
+  
+  # Nature Articles typically do NOT use section headers
+  # The text flows as continuous prose with paragraph breaks
+  use_section_headers: false      # Key Nature distinction vs other journals
+
+# ── Summary (Abstract) Format ──
+summary:
+  format: "single_paragraph"      # NOT structured
+  bolded: true                    # Displayed in bold
+  max_words: 200
+  structure:                      # Logical structure within the paragraph
+    - sentence_1: "Context — broad significance of the field"
+    - sentence_2: "Problem — specific knowledge gap"
+    - sentence_3: "Approach — what you did (1-2 sentences)"
+    - sentence_4: "Key findings — main results (2-3 sentences)"
+    - sentence_5: "Implications — why it matters"
+  prohibited:
+    - "No references in the summary"
+    - "No abbreviations unless absolutely necessary"
+    - "No structured labels (Background:, Methods:, etc.)"
+
+# ── Title Requirements ──
+title:
+  max_characters: 90              # Fits on two lines in print
+  style:
+    - "Concise and informative"
+    - "No abbreviations"
+    - "No punctuation at end"
+    - "Active voice preferred ('X reveals Y' not 'Revelation of Y by X')"
+    - "No formulae or trade names"
+    - "Should stand alone without the summary"
+
+# ── Figure Specifications ──
+figures:
+  max_combined: 6                 # Figures + tables
+  dimensions:
+    single_column_mm: 89
+    double_column_mm: 183
+    full_page_height_mm: 247
+  resolution:
+    minimum_dpi: 300
+    line_art_dpi: 600
+  formats:
+    initial_submission: ["JPEG", "PNG", "TIFF", "PDF", "EPS"]
+    accepted_revision: ["TIFF", "EPS", "PDF"]
+  labels:
+    font: "Arial or Helvetica"
+    case: "lowercase (a, b, c...)"
+    size: "8-12 pt"
+  legends:
+    max_words_per_legend: 300
+    location: "End of manuscript, not on figure files"
+    structure: "Title line (bold) + description + statistical info"
+  colors:
+    colorblind_safe: true
+    avoid: ["red-green only distinctions"]
+
+# ── Reference Format ──
+references:
+  style: "Nature numbered superscript"
+  max_count: 50
+  in_text: "Superscript numbers, consecutive, comma-separated"
+  format: |
+    Article: Author1, A. B., Author2, C. D. & Author3, E. F. Title of article. Journal Abbrev. volume, start–end (year).
+    Book: Author1, A. B. Title of Book (Publisher, year).
+    Chapter: Author1, A. B. in Title of Book (ed. Editor) pages (Publisher, year).
+  examples:
+    article: "Lundberg, S. M. et al. From local explanations to global understanding with explainable AI for trees. Nat. Mach. Intell. 2, 56–67 (2020)."
+    book: "Hastie, T., Tibshirani, R. & Friedman, J. The Elements of Statistical Learning (Springer, 2009)."
+
+# ── Required Statements ──
+required_statements:
+  data_availability:
+    required: true
+    description: "Where data can be accessed, with accession numbers/DOIs"
+    location: "After Methods, before References (or after Acknowledgements)"
+  
+  code_availability:
+    required: true
+    description: "Repository links, DOIs for custom code"
+    location: "After Data Availability"
+  
+  author_contributions:
+    required: true
+    description: "CRediT-style or free-text contributions"
+    location: "End matter"
+  
+  competing_interests:
+    required: true
+    description: "Must declare or state 'none'"
+    location: "End matter"
+  
+  ethics:
+    required_if: "Human subjects, animal research, clinical data"
+    description: "IRB approval, informed consent, ARRIVE guidelines"
+  
+  reporting_summary:
+    required: true
+    description: "Nature Reporting Summary form must be completed"
+    url: "https://www.nature.com/documents/nr-reporting-summary.pdf"
+
+# ── Submission Format ──
+submission:
+  initial:
+    format: ["PDF", "Word", "LaTeX"]
+    figures: "Embedded in manuscript or separate files"
+    line_numbers: true
+    double_spaced: true
+  
+  revision:
+    format: ["Word", "LaTeX source"]
+    figures: "Separate high-resolution files"
+    track_changes: true
+    response_to_reviewers: true
+
+# ── Writing Style ──
+writing_style:
+  voice: "active preferred"
+  audience: "Broad scientific community (not just specialists)"
+  tone: "Authoritative but accessible"
+  narrative: "Story-driven — every paper should tell a compelling story"
+  first_person: "We (for multi-author papers)"
+  tense:
+    introduction: "Present tense for established facts, past for prior work"
+    results: "Past tense (we found, we observed)"
+    discussion: "Present tense for implications, past for your results"
+    methods: "Past tense throughout"
+  
+  key_principles:
+    - "Hook in the first sentence — capture broad audience immediately"
+    - "No jargon in the first paragraph"
+    - "Define all acronyms at first use"
+    - "One idea per sentence"
+    - "Vary sentence length (15-25 words average)"
+    - "Strong topic sentences for each paragraph"
+    - "Figures should tell the story independently of text"
