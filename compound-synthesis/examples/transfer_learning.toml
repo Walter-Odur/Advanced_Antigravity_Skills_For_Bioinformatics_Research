@@ -1,0 +1,21 @@
+# REINVENT4 Transfer Learning Example
+# Fine-tune the Reinvent prior on known DprE1 actives.
+# After training, use the output model for RL or sampling.
+#
+# Usage:
+#   reinvent -l tl.log transfer_learning.toml
+
+run_type = "transfer_learning"
+device = "cpu"
+tb_logdir = "tb_TL"
+
+[parameters]
+
+num_epochs = 50
+save_every_n_epochs = 10
+batch_size = 64
+num_refs = 0
+sample_batch_size = 100
+input_model_file = "priors/reinvent.prior"
+smiles_file = "dpre1_actives.smi"
+output_model_file = "dpre1_focused.model"
