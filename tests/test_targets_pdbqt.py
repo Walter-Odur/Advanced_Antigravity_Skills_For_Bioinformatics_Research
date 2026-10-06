@@ -186,7 +186,7 @@ def test_no_converter_reports_advice_rather_than_succeeding(tmp_path,
     assert result.ok is False
     assert result.output_path is None
     assert result.converter == "none"
-    assert "pip install meeko" in result.message
+    assert "Auto-installation" in result.message
     assert str(source) in result.message
 
 
@@ -319,7 +319,7 @@ def test_ligand_conversion_without_meeko_names_the_install(monkeypatch):
         ligand_to_pdbqt(None, name="test")
     message = str(excinfo.value)
     assert "meeko" in message
-    assert "pip install" in message
+    assert "Auto-install" in message
 
 
 # ---------------------------------------------------------------------------

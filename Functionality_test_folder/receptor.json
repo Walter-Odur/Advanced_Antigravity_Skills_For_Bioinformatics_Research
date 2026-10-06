@@ -1,0 +1,93 @@
+{
+  "steps": [
+    "obtained structure 1ITF.pdb",
+    "cleaned to 1ITF_clean.pdb: kept 1351 atoms in chain(s) A",
+    "converted to PDBQT with obabel (permissive mode)"
+  ],
+  "source": {
+    "path": "e:\\ANTIGRAVITY_WORKSHOP\\Functionality_test_folder\\1ITF.pdb",
+    "identifier": "1ITF",
+    "source": "RCSB PDB",
+    "url": "https://files.rcsb.org/download/1ITF.pdb",
+    "bytes": 5272857
+  },
+  "cleaning": {
+    "input_path": "e:\\ANTIGRAVITY_WORKSHOP\\Functionality_test_folder\\1ITF.pdb",
+    "output_path": "e:\\ANTIGRAVITY_WORKSHOP\\Functionality_test_folder\\1ITF_clean.pdb",
+    "chains_in_input": [
+      "A"
+    ],
+    "chains_kept": [
+      "A"
+    ],
+    "residues_kept": 165,
+    "atoms_kept": 1351,
+    "waters_removed": 0,
+    "heterogens_removed": [],
+    "heterogens_kept": [],
+    "altloc_atoms_dropped": 0,
+    "hydrogens_removed": 1347,
+    "insertion_codes_present": false,
+    "warnings": [
+      "24 models present; kept model 1 only."
+    ]
+  },
+  "quality": {
+    "path": "e:\\ANTIGRAVITY_WORKSHOP\\Functionality_test_folder\\1ITF.pdb",
+    "n_residues": 165,
+    "chains": [
+      "A"
+    ],
+    "mean_plddt": 0.0,
+    "median_plddt": 0.0,
+    "min_plddt": 0.0,
+    "max_plddt": 0.0,
+    "residues_very_high": 0,
+    "residues_confident": 0,
+    "residues_low": 0,
+    "residues_very_low": 165,
+    "low_confidence_regions": [
+      {
+        "chain": "A",
+        "start_residue": 1,
+        "end_residue": 165,
+        "length": 165,
+        "mean_plddt": 0.0
+      }
+    ],
+    "verdict": "STOP",
+    "reason": "Mean pLDDT 0.0 with 100% of residues below 50. Not reliable enough for docking.",
+    "scale": "plddt_0_1",
+    "actions": [
+      "Re-predict with an MSA-based method: 'generate-af2-script --method colabfold'.",
+      "Search the PDB for a homologous experimental structure.",
+      "If no structure can be obtained, consider ligand-based virtual screening instead of docking."
+    ],
+    "interpretation": "pLDDT bands: >=90 very high, 70-90 confident, 50-70 low, <50 very low (AlphaFold DB convention).",
+    "b_factor_caveat": "B-factors were all between 0 and 1, which is how the ESMFold API writes pLDDT. They have been rescaled by 100, so the figures below are on the usual 0-100 scale. Without that rescaling an 84 pLDDT model reads as 0.84 and would be reported as very low confidence.",
+    "per_chain": {
+      "A": {
+        "n_residues": 165,
+        "mean_plddt": 0.0
+      }
+    }
+  },
+  "candidate_ligands": [],
+  "pdbqt": {
+    "ok": true,
+    "output_path": "e:\\ANTIGRAVITY_WORKSHOP\\Functionality_test_folder\\1ITF_clean.pdbqt",
+    "converter": "obabel",
+    "message": "Receptor PDBQT written by Open Babel (auto-installed; rigid, pH 7.4).",
+    "strict": false,
+    "compromised_residues": [],
+    "warnings": [
+      "Open Babel was auto-installed to provide PDBQT conversion."
+    ]
+  },
+  "pdbqt_converters_available": [
+    "meeko",
+    "obabel"
+  ],
+  "receptor_for_docking": "e:\\ANTIGRAVITY_WORKSHOP\\Functionality_test_folder\\1ITF_clean.pdbqt",
+  "next_step": "No bound ligand was found, so define the docking box from pocket residues: define-site --pdb <file> --residues A:123 A:124 ..."
+}

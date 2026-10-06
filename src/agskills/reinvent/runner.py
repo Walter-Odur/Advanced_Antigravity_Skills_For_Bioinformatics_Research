@@ -228,8 +228,8 @@ def run_reinvent(config_path: str | Path, *, log_path: str | None = None,
         if not executable:
             raise MissingDependencyError(
                 "the 'reinvent' command",
-                install="pip install -e <REINVENT4 checkout>, then re-run "
-                        "'check-setup' to confirm",
+                install="Auto-install via git clone was attempted but "
+                        "did not succeed. Check your internet connection.",
             )
 
     if dry_run:

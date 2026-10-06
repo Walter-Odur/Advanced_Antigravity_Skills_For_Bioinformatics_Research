@@ -237,7 +237,8 @@ def check_setup(reinvent_dir: str | None = None) -> dict[str, Any]:
     if spec is None:
         report["problems"].append("The 'reinvent' package is not importable.")
         report["advice"].append(
-            "Install it in this interpreter: pip install -e <REINVENT4>"
+            "REINVENT 4 is not importable. Auto-install will be attempted "
+            "when the generative stage runs."
         )
     if executable is None:
         report["problems"].append("The 'reinvent' command is not on PATH.")

@@ -119,8 +119,8 @@ def cmd_prepare_receptor(args: argparse.Namespace) -> None:
         "No bound ligand was found, so define the docking box from pocket "
         "residues: define-site --pdb <file> --residues A:123 A:124 ..."
         if not ligands else
-        "Install a PDBQT converter (pip install meeko scipy gemmi) to "
-        "produce a docking-ready receptor."
+        "PDBQT conversion was not available. Auto-installation of meeko "
+        "and Open Babel was attempted but did not succeed."
     )
 
     emit_json(result, args, summary=[

@@ -86,7 +86,7 @@ def _biopython():
     except ImportError:  # pragma: no cover
         if not ensure_biopython():
             raise MissingDependencyError(
-                "biopython", install="pip install biopython"
+                "biopython", install="Auto-install was attempted but failed."
             )
         from Bio.PDB import PDBIO, PDBParser, Select  # noqa: PLC0415
         return PDBParser, PDBIO, Select

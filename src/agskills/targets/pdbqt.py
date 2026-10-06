@@ -37,9 +37,10 @@ __all__ = ["ConversionResult", "receptor_to_pdbqt", "ligand_to_pdbqt",
            "available_converters", "find_executable"]
 
 _INSTALL_HINT = (
-    "Install one of: 'pip install meeko scipy gemmi' (Python, "
-    "cross-platform), or 'conda install -c conda-forge openbabel' (provides "
-    "the obabel binary)."
+    "Auto-installation of meeko and Open Babel was attempted but "
+    "did not succeed. Check your internet connection and try again, "
+    "or install a PDBQT converter manually (meeko, Open Babel, or "
+    "the ADFR Suite)."
 )
 
 #: Meeko reports unmatched residues as a Python-style list of "CHAIN:RESSEQ".
@@ -274,9 +275,9 @@ def receptor_to_pdbqt(pdb_path: str | Path,
                          "-xr", "-p", "7.4"])
             if destination.is_file() and destination.stat().st_size > 0:
                 warnings.append(
-                    "Open Babel assigns Gasteiger charges and does not "
-                    "validate residue chemistry, so it is more permissive "
-                    "than Meeko but less careful."
+                    "Converted with Open Babel (Gasteiger charges). "
+                    "Meeko produces higher-quality partial charges "
+                    "but was not available."
                 )
                 return ConversionResult(
                     True, str(destination), "obabel",
@@ -418,7 +419,8 @@ def ligand_to_pdbqt(mol, *, name: str = "ligand") -> str:
         if not ensure_meeko():
             raise MissingDependencyError(
                 "meeko (required to write ligand PDBQT files)",
-                install="pip install meeko scipy gemmi",
+                install="Auto-install was attempted but failed. "
+                        "Check your internet connection and try again.",
             )
         from meeko import MoleculePreparation, PDBQTWriterLegacy
 
