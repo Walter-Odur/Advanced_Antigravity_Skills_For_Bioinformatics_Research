@@ -1,0 +1,24 @@
+# Drug Discovery Wizard - Pinned Dependencies
+# Install: uv pip install -r requirements.txt
+attrs==26.1.0
+biopython==1.88
+cattrs==26.2.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+chembl-webresource-client==0.10.9
+easydict==1.13
+idna==3.19
+meeko==0.8.0
+numpy==2.5.3
+pandas==3.0.5
+pillow==12.3.0
+platformdirs==4.11.8
+python-dateutil==2.9.0.post0
+rdkit==2026.3.6
+requests==2.34.2
+requests-cache==1.3.3
+six==1.17.0
+typing-extensions==4.16.0
+tzdata==2026.4
+url-normalize==3.0.0
+urllib3==2.7.0

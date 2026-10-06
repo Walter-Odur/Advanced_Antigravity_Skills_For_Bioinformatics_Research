@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Testing / coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary Office lock files
+~$*
+
+# Personal files (travel documents, receipts, etc.)
+*.jpeg
+*.jpg
+*.pdf
+Boarding Passes*
+Train*
+Underground*
+Uber*
+FROM_ENTEBBE*
+Walter Reservation*
+Ground_Transport*
+ADMET1*
+pipeline_schematic*
+pubchem_reference.json
+
+# Workshop documents (share separately if needed)
+Antigravity_Drug_Discovery_Skills_Description.docx
+Antigravity_skills_devt_plans_WALTER_ODUR.docx
+
+# REINVENT4 is a separate repository — do not nest it
+REINVENT4/
+
+# Test working directories
+work/
+pipeline/
+compound_synthesis_tests/
+wizard_tests/
+
+# Antigravity system files
+.gemini/

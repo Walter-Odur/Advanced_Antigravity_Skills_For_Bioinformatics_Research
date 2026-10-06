@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agskills"
+version = "2.0.0"
+description = "Structure-based drug discovery skills: target preparation, compound screening, generative chemistry, and MD setup."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Walter Odur" }]
+keywords = ["drug-discovery", "cheminformatics", "docking", "admet", "molecular-dynamics"]
+
+# Runtime dependencies. Deliberately minimal: everything in the core
+# (HTTP, JSON, SLURM/MDP/TOML generation) runs on the standard library.
+# RDKit is required for all cheminformatics; biopython for PDB parsing.
+dependencies = [
+    "rdkit>=2023.9",
+    "biopython>=1.81",
+]
+
+[project.optional-dependencies]
+# Ligand/receptor PDBQT preparation for AutoDock Vina.
+docking = ["meeko>=0.5", "scipy>=1.10", "numpy>=1.24"]
+# Tabular analysis of REINVENT output.
+analysis = ["pandas>=2.0", "numpy>=1.24"]
+test = ["pytest>=7.4", "pytest-cov>=4.1"]
+all = [
+    "meeko>=0.5", "scipy>=1.10", "numpy>=1.24",
+    "pandas>=2.0", "pytest>=7.4", "pytest-cov>=4.1",
+]
+
+[project.scripts]
+ag-target-preparation = "agskills.cli.target_preparation:main"
+ag-compound-screening = "agskills.cli.compound_screening:main"
+ag-compound-synthesis = "agskills.cli.compound_synthesis:main"
+ag-md-simulation = "agskills.cli.md_simulation:main"
+ag-wizard = "agskills.cli.wizard:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agskills = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+# Default run is hermetic: no network, no external binaries. Opt in explicitly.
+addopts = "-ra --strict-markers --strict-config -m 'not network and not slow and not requires_vina and not requires_gromacs and not requires_reinvent'"
+markers = [
+    "network: hits a live external API (opt in with -m network)",
+    "slow: takes more than a few seconds",
+    "requires_vina: needs an AutoDock Vina binary or the vina Python module",
+    "requires_gromacs: needs a GROMACS installation",
+    "requires_reinvent: needs a REINVENT4 checkout and its dependencies",
+]
+filterwarnings = ["error::DeprecationWarning:agskills.*"]

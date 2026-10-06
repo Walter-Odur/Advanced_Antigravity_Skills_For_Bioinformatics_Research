@@ -1,0 +1,358 @@
+"""GROMACS workflow generation: a gmxapi Python driver and a shell fallback.
+
+Both generators emit the standard protein-in-water protocol: topology,
+box, solvate, neutralise, minimise, NVT, NPT, production. The shell script
+is the more portable of the two and is what most clusters actually run.
+
+The generated scripts check their preconditions before each long step,
+because the failure mode they replace was a workflow that ran ``pdb2gmx``,
+failed, and then ran every subsequent command against missing files,
+producing a cascade of confusing errors.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from ..errors import UsageError
+from .mdp import FORCE_FIELDS, WATER_MODELS, MdpStage, mdp_stages
+
+__all__ = ["generate_gmxapi_workflow", "generate_setup_shell",
+           "workflow_bundle"]
+
+
+def _validate_choices(force_field: str, water: str) -> tuple[str, dict[str, Any]]:
+    key = (force_field or "").strip().lower()
+    aliases = {"charmm": "charmm36", "amber": "amber99sb-ildn", "opls": "oplsaa"}
+    key = aliases.get(key, key)
+    if key not in FORCE_FIELDS:
+        raise UsageError(
+            f"Unknown force field {force_field!r}.",
+            hint=f"Choose one of: {', '.join(sorted(FORCE_FIELDS))}",
+        )
+    if water not in WATER_MODELS:
+        raise UsageError(
+            f"Unknown water model {water!r}.",
+            hint=f"Choose one of: {', '.join(sorted(WATER_MODELS))}",
+        )
+    return key, FORCE_FIELDS[key]
+
+
+def workflow_bundle(*, pdb: str, force_field: str = "charmm36",
+                    water: str = "tip3p", temperature: float = 300.0,
+                    pressure: float = 1.0, production_ns: float = 100.0,
+                    equilibration_ps: float = 100.0, dt_ps: float = 0.002,
+                    box_distance: float = 1.2, box_type: str = "dodecahedron",
+                    ion_concentration: float = 0.15,
+                    has_ligand: bool = False, seed: int = -1
+                    ) -> dict[str, Any]:
+    """Assemble everything needed for an MD setup: MDP stages plus metadata.
+
+    Returns a dict with the rendered MDP files keyed by filename, the
+    resolved settings, and any advisory warnings.
+    """
+    ff_key, ff = _validate_choices(force_field, water)
+    stages: list[MdpStage] = mdp_stages(
+        force_field=ff_key, temperature=temperature, pressure=pressure,
+        production_ns=production_ns, equilibration_ps=equilibration_ps,
+        dt_ps=dt_ps, has_ligand=has_ligand, seed=seed,
+    )
+    warnings: list[str] = []
+    recommended = ff["recommended_water"]
+    if water != recommended and water != "none":
+        warnings.append(
+            f"{ff_key} was parameterised with {recommended}; you selected "
+            f"{water}. This is a deliberate deviation - make sure it is "
+            "intended."
+        )
+    if box_distance < 1.0:
+        warnings.append(
+            f"A solute-to-box distance of {box_distance:g} nm is smaller than "
+            "the 1.0 nm minimum needed to keep periodic images from "
+            "interacting across a 1.2 nm cutoff."
+        )
+    if has_ligand:
+        warnings.append(
+            "A ligand needs its own topology. Generate parameters with CGenFF "
+            "(for CHARMM36) or ACPYPE/GAFF (for AMBER) and include the .itp "
+            "in topol.top before running grompp."
+        )
+    if production_ns > 0 and production_ns < 10:
+        warnings.append(
+            f"{production_ns:g} ns is short for assessing binding stability; "
+            "100 ns or more is typical, in several independent replicates."
+        )
+
+    return {
+        "settings": {
+            "pdb": pdb,
+            "force_field": ff_key,
+            "gromacs_force_field": ff["gromacs_name"],
+            "water_model": water,
+            "temperature_K": temperature,
+            "pressure_bar": pressure,
+            "production_ns": production_ns,
+            "equilibration_ps_per_stage": equilibration_ps,
+            "timestep_ps": dt_ps,
+            "box_type": box_type,
+            "box_distance_nm": box_distance,
+            "ion_concentration_M": ion_concentration,
+            "has_ligand": has_ligand,
+            "velocity_seed": seed,
+        },
+        "force_field_note": ff["note"],
+        "citation": ff["citation"],
+        "mdp_files": {stage.filename: stage.render() for stage in stages},
+        "stages": [
+            {"name": s.name, "file": s.filename, "purpose": s.purpose}
+            for s in stages
+        ],
+        "warnings": warnings,
+    }
+
+
+def generate_setup_shell(bundle: dict[str, Any]) -> str:
+    """Render a self-contained GROMACS setup shell script."""
+    s = bundle["settings"]
+    has_production = any(stage["name"] == "production"
+                         for stage in bundle["stages"])
+    lines = [
+        "#!/bin/bash",
+        "# GROMACS setup and equilibration, generated by agskills.",
+        f"# Force field:  {s['force_field']} ({s['gromacs_force_field']})",
+        f"# Water model:  {s['water_model']}",
+        f"# Temperature:  {s['temperature_K']:g} K",
+        f"# Pressure:     {s['pressure_bar']:g} bar",
+        f"# Production:   {s['production_ns']:g} ns at {s['timestep_ps']:g} ps/step",
+        f"# {bundle['force_field_note']}",
+        "",
+        "set -euo pipefail",
+        "",
+        f'PDB="{s["pdb"]}"',
+        f'FF="{s["gromacs_force_field"]}"',
+        f'WATER="{s["water_model"]}"',
+        f'BOXTYPE="{s["box_type"]}"',
+        f'BOXDIST={s["box_distance_nm"]}',
+        f'CONC={s["ion_concentration_M"]}',
+        "",
+        'if ! command -v gmx >/dev/null 2>&1 && ! command -v gmx_mpi >/dev/null 2>&1; then',
+        '  echo "ERROR: GROMACS (gmx) is not on PATH." >&2',
+        "  exit 1",
+        "fi",
+        'GMX=$(command -v gmx || command -v gmx_mpi)',
+        "",
+        'if [ ! -f "$PDB" ]; then',
+        '  echo "ERROR: input PDB not found: $PDB" >&2',
+        "  exit 1",
+        "fi",
+        "",
+        "for f in ions.mdp em.mdp nvt.mdp npt.mdp; do",
+        '  if [ ! -f "$f" ]; then',
+        '    echo "ERROR: $f is missing. Generate the MDP files first." >&2',
+        "    exit 1",
+        "  fi",
+        "done",
+        "",
+        'echo "== 1/8 Topology (pdb2gmx) =="',
+        '"$GMX" pdb2gmx -f "$PDB" -o processed.gro -p topol.top \\',
+        '  -ff "$FF" -water "$WATER" -ignh',
+        "",
+        'echo "== 2/8 Box =="',
+        '"$GMX" editconf -f processed.gro -o boxed.gro \\',
+        '  -c -d "$BOXDIST" -bt "$BOXTYPE"',
+        "",
+        'echo "== 3/8 Solvate =="',
+        '"$GMX" solvate -cp boxed.gro -cs spc216.gro -o solvated.gro -p topol.top',
+        "",
+        'echo "== 4/8 Add ions =="',
+        '"$GMX" grompp -f ions.mdp -c solvated.gro -p topol.top -o ions.tpr -maxwarn 2',
+        "# SOL is the solvent group; genion replaces water molecules with ions.",
+        'echo SOL | "$GMX" genion -s ions.tpr -o solvated_ions.gro -p topol.top \\',
+        '  -pname NA -nname CL -neutral -conc "$CONC"',
+        "",
+        'echo "== 5/8 Energy minimisation =="',
+        '"$GMX" grompp -f em.mdp -c solvated_ions.gro -p topol.top -o em.tpr',
+        '"$GMX" mdrun -v -deffnm em',
+        "",
+        "# Potential energy must be negative and the maximum force below emtol.",
+        'echo "Minimisation result:"',
+        'echo "Potential" | "$GMX" energy -f em.edr -o em_potential.xvg | tail -5',
+        "",
+        'echo "== 6/8 NVT equilibration =="',
+        '"$GMX" grompp -f nvt.mdp -c em.gro -r em.gro -p topol.top -o nvt.tpr',
+        '"$GMX" mdrun -v -deffnm nvt',
+        "",
+        'echo "== 7/8 NPT equilibration =="',
+        '"$GMX" grompp -f npt.mdp -c nvt.gro -r nvt.gro -t nvt.cpt \\',
+        "  -p topol.top -o npt.tpr",
+        '"$GMX" mdrun -v -deffnm npt',
+        "",
+        'echo "Check that density has converged:"',
+        'echo "Density" | "$GMX" energy -f npt.edr -o npt_density.xvg | tail -5',
+        "",
+    ]
+    if has_production:
+        lines += [
+            'echo "== 8/8 Production run input =="',
+            '"$GMX" grompp -f md.mdp -c npt.gro -t npt.cpt -p topol.top -o md.tpr',
+            "",
+            'echo "Setup complete. md.tpr is ready."',
+            'echo "Production MD is GPU work: submit it rather than running it here."',
+            'echo "  sbatch submit_md.sh"',
+        ]
+    else:
+        lines += [
+            'echo "Setup complete through NPT equilibration (production_ns was 0)."',
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def generate_gmxapi_workflow(bundle: dict[str, Any]) -> str:
+    """Render a gmxapi-based Python workflow driver.
+
+    gmxapi gives programmatic control and is useful for ensembles, but
+    ``pdb2gmx``, ``solvate`` and ``genion`` have no gmxapi equivalent, so
+    those steps are driven through ``gmx`` as subprocesses. The previous
+    generator did not make that boundary clear, which led to workflows that
+    appeared to be pure gmxapi but silently depended on the CLI anyway.
+    """
+    s = bundle["settings"]
+    has_production = any(stage["name"] == "production"
+                         for stage in bundle["stages"])
+    production_block = '''
+    # ---- Production -------------------------------------------------
+    # Production MD is deliberately not launched here. It is long GPU work
+    # and belongs in a batch job. This step only builds the run input.
+    run("grompp", ["-f", "md.mdp", "-c", "npt.gro", "-t", "npt.cpt",
+                   "-p", "topol.top", "-o", "md.tpr"])
+    log("md.tpr is ready. Submit the production run with: sbatch submit_md.sh")
+''' if has_production else '''
+    log("production_ns was 0, so no production input was built.")
+'''
+
+    return f'''#!/usr/bin/env python3
+"""GROMACS MD setup driver, generated by agskills.
+
+Force field:  {s['force_field']} ({s['gromacs_force_field']})
+Water model:  {s['water_model']}
+Temperature:  {s['temperature_K']:g} K
+Pressure:     {s['pressure_bar']:g} bar
+Production:   {s['production_ns']:g} ns at {s['timestep_ps']:g} ps/step
+
+{bundle['force_field_note']}
+
+Run from the directory holding the MDP files and the input PDB:
+
+    python3 run_md.py
+
+Steps that gmxapi does not cover (pdb2gmx, editconf, solvate, genion) are
+executed through the gmx command-line tool. Minimisation and equilibration
+use gmxapi when it is importable and fall back to the CLI otherwise.
+"""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+PDB = {s['pdb']!r}
+FORCE_FIELD = {s['gromacs_force_field']!r}
+WATER = {s['water_model']!r}
+BOX_TYPE = {s['box_type']!r}
+BOX_DISTANCE_NM = {s['box_distance_nm']!r}
+ION_CONCENTRATION_M = {s['ion_concentration_M']!r}
+TEMPERATURE_K = {s['temperature_K']!r}
+PRESSURE_BAR = {s['pressure_bar']!r}
+PRODUCTION_NS = {s['production_ns']!r}
+
+REQUIRED_MDP = ["ions.mdp", "em.mdp", "nvt.mdp", "npt.mdp"]
+
+
+def log(message: str) -> None:
+    print(f"[md] {{message}}", flush=True)
+
+
+def find_gmx() -> str:
+    for candidate in ("gmx", "gmx_mpi"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    sys.exit("ERROR: GROMACS (gmx) is not on PATH.")
+
+
+GMX = find_gmx()
+
+
+def run(tool: str, args: list[str], stdin_text: str | None = None) -> None:
+    """Run one gmx subcommand, failing loudly."""
+    command = [GMX, tool, *args]
+    log(" ".join(command))
+    result = subprocess.run(command, input=stdin_text, text=True,
+                            capture_output=True, check=False)
+    if result.returncode != 0:
+        sys.stderr.write(result.stdout or "")
+        sys.stderr.write(result.stderr or "")
+        sys.exit(f"ERROR: gmx {{tool}} failed with status {{result.returncode}}")
+
+
+def check_preconditions() -> None:
+    if not Path(PDB).is_file():
+        sys.exit(f"ERROR: input PDB not found: {{PDB}}")
+    missing = [f for f in REQUIRED_MDP if not Path(f).is_file()]
+    if missing:
+        sys.exit("ERROR: missing MDP file(s): " + ", ".join(missing))
+
+
+def main() -> None:
+    check_preconditions()
+    log(f"force field {{FORCE_FIELD}}, water {{WATER}}, {{TEMPERATURE_K}} K")
+
+    # ---- System preparation (CLI only) ------------------------------
+    run("pdb2gmx", ["-f", PDB, "-o", "processed.gro", "-p", "topol.top",
+                    "-ff", FORCE_FIELD, "-water", WATER, "-ignh"])
+    run("editconf", ["-f", "processed.gro", "-o", "boxed.gro",
+                     "-c", "-d", str(BOX_DISTANCE_NM), "-bt", BOX_TYPE])
+    run("solvate", ["-cp", "boxed.gro", "-cs", "spc216.gro",
+                    "-o", "solvated.gro", "-p", "topol.top"])
+    run("grompp", ["-f", "ions.mdp", "-c", "solvated.gro", "-p", "topol.top",
+                   "-o", "ions.tpr", "-maxwarn", "2"])
+    run("genion", ["-s", "ions.tpr", "-o", "solvated_ions.gro",
+                   "-p", "topol.top", "-pname", "NA", "-nname", "CL",
+                   "-neutral", "-conc", str(ION_CONCENTRATION_M)],
+        stdin_text="SOL\\n")
+
+    # ---- Minimisation and equilibration ----------------------------
+    try:
+        import gmxapi as gmx
+        log(f"using gmxapi {{getattr(gmx, '__version__', 'unknown')}}")
+        use_gmxapi = True
+    except ImportError:
+        log("gmxapi not importable; using the gmx CLI for mdrun")
+        use_gmxapi = False
+
+    def grompp_and_run(mdp: str, coords: str, name: str,
+                       restraint: str | None = None,
+                       checkpoint: str | None = None) -> None:
+        args = ["-f", mdp, "-c", coords, "-p", "topol.top", "-o", f"{{name}}.tpr"]
+        if restraint:
+            args += ["-r", restraint]
+        if checkpoint:
+            args += ["-t", checkpoint]
+        run("grompp", args)
+        if use_gmxapi:
+            simulation = gmx.read_tpr(f"{{name}}.tpr")
+            gmx.mdrun(simulation, runtime_args={{"-deffnm": name}}).run()
+        else:
+            run("mdrun", ["-deffnm", name])
+
+    grompp_and_run("em.mdp", "solvated_ions.gro", "em")
+    grompp_and_run("nvt.mdp", "em.gro", "nvt", restraint="em.gro")
+    grompp_and_run("npt.mdp", "nvt.gro", "npt", restraint="nvt.gro",
+                   checkpoint="nvt.cpt")
+{production_block}
+
+if __name__ == "__main__":
+    main()
+'''
