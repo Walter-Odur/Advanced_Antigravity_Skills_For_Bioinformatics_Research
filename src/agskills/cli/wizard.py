@@ -115,17 +115,33 @@ def cmd_plan(args: argparse.Namespace) -> None:
     vina_kind, vina_detail = find_vina()
     reinvent = check_setup(args.reinvent_dir)
     converters = available_converters()
+
+    # Auto-install GROMACS if absent
     try:
         import shutil
+        from .._deps import ensure_gromacs
         gromacs = shutil.which("gmx") or shutil.which("gmx_mpi")
+        if not gromacs:
+            ensure_gromacs()
+            gromacs = shutil.which("gmx") or shutil.which("gmx_mpi")
     except Exception:
         gromacs = None
 
+    # Auto-install REINVENT if absent
+    if not reinvent["ready"]:
+        try:
+            from .._deps import ensure_reinvent
+            if ensure_reinvent():
+                reinvent = check_setup(args.reinvent_dir)
+        except Exception:
+            pass
+
+    conv_note = (", ".join(converters)
+                 if converters
+                 else "none (a cleaned PDB is still produced)")
     readiness = {
         "target": {"ready": bool(converters) or True,
-                   "note": f"PDBQT converters available: "
-                           f"{', '.join(converters) or 'none (a cleaned PDB '
-                           'is still produced)'}"},
+                   "note": f"PDBQT converters available: {conv_note}"},
         "sourcing": {"ready": True, "note": "Needs internet access."},
         "triage": {"ready": True, "note": "Offline RDKit battery."},
         "docking": {"ready": vina_kind != "none",

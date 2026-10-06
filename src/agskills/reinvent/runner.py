@@ -222,11 +222,15 @@ def run_reinvent(config_path: str | Path, *, log_path: str | None = None,
 
     executable = checks["reinvent_executable"]
     if not executable:
-        raise MissingDependencyError(
-            "the 'reinvent' command",
-            install="pip install -e <REINVENT4 checkout>, then re-run "
-                    "'check-setup' to confirm",
-        )
+        from .._deps import ensure_reinvent
+        if ensure_reinvent():
+            executable = shutil.which("reinvent")
+        if not executable:
+            raise MissingDependencyError(
+                "the 'reinvent' command",
+                install="pip install -e <REINVENT4 checkout>, then re-run "
+                        "'check-setup' to confirm",
+            )
 
     if dry_run:
         return {"dry_run": True, "would_run": [executable, str(path)],

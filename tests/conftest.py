@@ -6,6 +6,9 @@ that need either are marked and deselected by the ``addopts`` in
 default suite with nothing installed beyond the package and its
 dependencies.
 
+Auto-installation of missing tools (pip/conda/apt) is disabled during
+tests via the ``AGSKILLS_NO_AUTO_INSTALL`` environment variable.
+
 Real data rather than synthetic stand-ins is used wherever the thing under
 test is scientific:
 
@@ -38,6 +41,9 @@ import sys
 from pathlib import Path
 
 import pytest
+
+# Disable auto-installation of missing tools during tests.
+os.environ["AGSKILLS_NO_AUTO_INSTALL"] = "1"
 
 DATA_DIR = Path(__file__).parent / "data"
 

@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .._deps import ensure_meeko
+from .._deps import ensure_meeko, ensure_openbabel
 from ..errors import MissingDependencyError
 from ..io_utils import ensure_parent, require_file, write_text
 
@@ -364,6 +364,30 @@ def receptor_to_pdbqt(pdb_path: str | Path,
                 except Exception as exc:
                     warnings.append(
                         f"mk_prepare_receptor failed after auto-install: {exc}"
+                    )
+
+        # Meeko auto-install failed or produced no output -- try Open Babel
+        if ensure_openbabel():
+            obabel = find_executable("obabel")
+            if obabel:
+                try:
+                    proc = _run([obabel, str(source), "-O",
+                                 str(destination), "-xr", "-p", "7.4"])
+                    if destination.is_file() and \
+                            destination.stat().st_size > 0:
+                        warnings.append(
+                            "Open Babel was auto-installed to provide "
+                            "PDBQT conversion."
+                        )
+                        return ConversionResult(
+                            True, str(destination), "obabel",
+                            "Receptor PDBQT written by Open Babel "
+                            "(auto-installed; rigid, pH 7.4).",
+                            strict=False, warnings=warnings,
+                        )
+                except Exception as exc:
+                    warnings.append(
+                        f"obabel failed after auto-install: {exc}"
                     )
 
     return ConversionResult(
