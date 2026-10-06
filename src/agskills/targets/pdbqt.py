@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .._deps import ensure_meeko
 from ..errors import MissingDependencyError
 from ..io_utils import ensure_parent, require_file, write_text
 
@@ -46,26 +47,7 @@ _BAD_RES_RE = re.compile(r"Template matching failed for:\s*\[([^\]]*)\]")
 _RES_TOKEN_RE = re.compile(r"'([^']+)'")
 
 
-def _auto_install_meeko() -> bool:
-    """Attempt to pip-install meeko and its dependencies automatically.
-
-    Called only when no PDBQT converter is available at all.  Meeko is a pure
-    Python package that works cross-platform, so this is safe and reliable.
-    Returns ``True`` if the install succeeded and ``mk_prepare_receptor`` is
-    now available.
-    """
-    packages = ["meeko>=0.5", "scipy>=1.10", "numpy>=1.24"]
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "pip", "install", *packages],
-            capture_output=True, text=True, timeout=300, check=False,
-        )
-        if proc.returncode == 0:
-            return True
-        # pip failed — fall through to return False.
-    except Exception:
-        pass
-    return False
+# _auto_install_meeko removed -- using centralized _deps.ensure_meeko()
 
 
 @dataclass
@@ -326,7 +308,7 @@ def receptor_to_pdbqt(pdb_path: str | Path,
 
     # --- Auto-install Meeko if nothing was found ---------------------------
     if not meeko_exe and not obabel and not adfr:
-        installed = _auto_install_meeko()
+        installed = ensure_meeko()
         if installed:
             meeko_exe = find_executable("mk_prepare_receptor")
             if meeko_exe:
@@ -408,11 +390,13 @@ def ligand_to_pdbqt(mol, *, name: str = "ligand") -> str:
     """
     try:
         from meeko import MoleculePreparation, PDBQTWriterLegacy
-    except ImportError as exc:
-        raise MissingDependencyError(
-            "meeko (required to write ligand PDBQT files)",
-            install="pip install meeko scipy gemmi",
-        ) from exc
+    except ImportError:
+        if not ensure_meeko():
+            raise MissingDependencyError(
+                "meeko (required to write ligand PDBQT files)",
+                install="pip install meeko scipy gemmi",
+            )
+        from meeko import MoleculePreparation, PDBQTWriterLegacy
 
     preparator = MoleculePreparation()
     setups = preparator.prepare(mol)

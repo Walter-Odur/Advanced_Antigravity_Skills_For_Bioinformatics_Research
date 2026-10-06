@@ -36,6 +36,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .._deps import ensure_vina
 from ..chem.smiles import CompoundRecord, parse_smiles
 from ..errors import MissingDependencyError, ResourceNotFoundError, UsageError
 from ..io_utils import ensure_parent, require_file, safe_stem, write_text
@@ -114,6 +115,10 @@ def find_vina() -> tuple[str, str]:
         found = shutil.which(candidate)
         if found:
             return "cli", found
+    # Nothing found -- try auto-installing the Python bindings.
+    if ensure_vina():
+        import vina  # noqa: F811,PLC0415
+        return "python", getattr(vina, "__version__", "unknown")
     return "none", ""
 
 

@@ -313,6 +313,8 @@ def test_ligand_conversion_without_meeko_names_the_install(monkeypatch):
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", blocked)
+    # Also block auto-install so the error surfaces.
+    monkeypatch.setattr("agskills.targets.pdbqt.ensure_meeko", lambda: False)
     with pytest.raises(MissingDependencyError) as excinfo:
         ligand_to_pdbqt(None, name="test")
     message = str(excinfo.value)
