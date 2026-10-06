@@ -66,8 +66,8 @@ def test_generated_script_is_valid_bash(job_type, tmp_path, bash):
     unterminated.
     """
     path = write_text(_script(job_type), tmp_path / f"{job_type}.sh")
-    result = subprocess.run([bash, "-n", str(path)], capture_output=True,
-                            text=True, check=False)
+    from conftest import bash_check
+    result = bash_check(bash, path)
     assert result.returncode == 0, (
         f"{job_type}.sh is not valid bash:\n{result.stderr}"
     )

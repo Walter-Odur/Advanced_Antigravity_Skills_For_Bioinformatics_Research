@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -240,17 +241,40 @@ def pytest_collection_modifyitems(config, items):
 def bash() -> str:
     """Path to a bash interpreter, for syntax-checking generated scripts.
 
-    On Windows the only bash available is WSL's ``bash.exe``, which cannot
-    resolve Windows temp-directory paths (it strips the backslashes).  Since
-    the generated scripts target Linux clusters, this check is skipped on
-    Windows rather than producing a spurious failure.
+    On Windows we use WSL's ``bash.exe``.  The generated scripts target
+    Linux clusters, so WSL is the right environment to validate them in.
     """
     if sys.platform == "win32":
-        pytest.skip(
-            "WSL bash cannot resolve Windows temp paths; "
-            "run bash syntax checks on Linux or macOS"
-        )
+        wsl = shutil.which("wsl") or shutil.which("wsl.exe")
+        if not wsl:
+            pytest.skip("WSL is not installed; cannot syntax-check bash scripts")
+        return wsl  # caller uses _wsl_bash_check() below
     found = shutil.which("bash")
     if not found:
         pytest.skip("bash is not available to syntax-check generated scripts")
     return found
+
+
+def _win_to_wsl_path(win_path: str | Path) -> str:
+    """Convert ``C:\\Users\\...\\file.sh`` to ``/mnt/c/Users/.../file.sh``."""
+    p = str(win_path).replace("\\", "/")
+    # "E:/foo/bar" -> "/mnt/e/foo/bar"
+    if len(p) >= 2 and p[1] == ":":
+        drive = p[0].lower()
+        p = f"/mnt/{drive}{p[2:]}"
+    return p
+
+
+def bash_check(bash_exe: str, script_path: Path) -> subprocess.CompletedProcess:
+    """Run ``bash -n`` on a script, handling Windows/WSL path conversion."""
+    if sys.platform == "win32":
+        wsl_path = _win_to_wsl_path(script_path)
+        return subprocess.run(
+            [bash_exe, "bash", "-n", wsl_path],
+            capture_output=True, text=True, check=False,
+        )
+    return subprocess.run(
+        [bash_exe, "-n", str(script_path)],
+        capture_output=True, text=True, check=False,
+    )
+

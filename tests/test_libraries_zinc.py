@@ -257,8 +257,8 @@ def test_filter_code_tables_are_documented():
 def test_generated_script_is_valid_bash(tmp_path, bash):
     selection = select_tranches("fragment-like")
     path = write_text(generate_zinc_script(selection), tmp_path / "dl.sh")
-    result = subprocess.run([bash, "-n", str(path)], capture_output=True,
-                            text=True, check=False)
+    from conftest import bash_check
+    result = bash_check(bash, path)
     assert result.returncode == 0, result.stderr
 
 
