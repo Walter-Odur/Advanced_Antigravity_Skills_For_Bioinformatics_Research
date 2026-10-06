@@ -46,6 +46,28 @@ _BAD_RES_RE = re.compile(r"Template matching failed for:\s*\[([^\]]*)\]")
 _RES_TOKEN_RE = re.compile(r"'([^']+)'")
 
 
+def _auto_install_meeko() -> bool:
+    """Attempt to pip-install meeko and its dependencies automatically.
+
+    Called only when no PDBQT converter is available at all.  Meeko is a pure
+    Python package that works cross-platform, so this is safe and reliable.
+    Returns ``True`` if the install succeeded and ``mk_prepare_receptor`` is
+    now available.
+    """
+    packages = ["meeko>=0.5", "scipy>=1.10", "numpy>=1.24"]
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pip", "install", *packages],
+            capture_output=True, text=True, timeout=300, check=False,
+        )
+        if proc.returncode == 0:
+            return True
+        # pip failed — fall through to return False.
+    except Exception:
+        pass
+    return False
+
+
 @dataclass
 class ConversionResult:
     """Outcome of a receptor or ligand PDBQT conversion."""
@@ -301,6 +323,66 @@ def receptor_to_pdbqt(pdb_path: str | Path,
             warnings.append(f"prepare_receptor exited {proc.returncode}")
         except Exception as exc:
             warnings.append(f"prepare_receptor failed: {exc}")
+
+    # --- Auto-install Meeko if nothing was found ---------------------------
+    if not meeko_exe and not obabel and not adfr:
+        installed = _auto_install_meeko()
+        if installed:
+            meeko_exe = find_executable("mk_prepare_receptor")
+            if meeko_exe:
+                stem = destination.with_suffix("")
+                base_command = [meeko_exe, "--read_pdb", str(source),
+                                "-o", str(stem), "-p",
+                                "--default_altloc", default_altloc]
+                try:
+                    proc = _run(base_command)
+                    combined = (proc.stdout or "") + (proc.stderr or "")
+                    if destination.is_file() and destination.stat().st_size > 0:
+                        warnings.append(
+                            "meeko was auto-installed to provide PDBQT "
+                            "conversion."
+                        )
+                        return ConversionResult(
+                            True, str(destination), "meeko",
+                            "Receptor PDBQT written by mk_prepare_receptor "
+                            "(auto-installed; all residues matched).",
+                            strict=True, warnings=warnings,
+                        )
+                    bad = _parse_bad_residues(combined)
+                    if bad and allow_incomplete_residues:
+                        proc = _run(base_command + ["-a"])
+                        if destination.is_file() and \
+                                destination.stat().st_size > 0:
+                            in_box = _residues_in_box(bad, source, site)
+                            warnings.append(
+                                "meeko was auto-installed to provide PDBQT "
+                                "conversion."
+                            )
+                            warnings.append(
+                                f"{len(bad)} residue(s) did not match a "
+                                "chemical template. Meeko padded them: "
+                                f"{', '.join(bad[:12])}"
+                                + (f" (+{len(bad) - 12} more)"
+                                   if len(bad) > 12 else "")
+                            )
+                            if in_box:
+                                warnings.append(
+                                    "IMPORTANT: "
+                                    f"{len(in_box)} of those residue(s) lie "
+                                    "inside the docking box "
+                                    f"({', '.join(in_box)})."
+                                )
+                            return ConversionResult(
+                                True, str(destination), "meeko",
+                                "Receptor PDBQT written by mk_prepare_receptor"
+                                " (auto-installed; permissive mode).",
+                                strict=False, compromised_residues=bad,
+                                warnings=warnings,
+                            )
+                except Exception as exc:
+                    warnings.append(
+                        f"mk_prepare_receptor failed after auto-install: {exc}"
+                    )
 
     return ConversionResult(
         ok=False, output_path=None, converter="none",
