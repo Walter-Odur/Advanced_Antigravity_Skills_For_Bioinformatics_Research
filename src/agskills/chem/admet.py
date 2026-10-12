@@ -41,6 +41,7 @@ from .rules import evaluate_rule
 from .smiles import CompoundRecord, parse_smiles
 
 __all__ = [
+    "Detail",
     "CheckOutcome",
     "Check",
     "Tier",
@@ -52,6 +53,10 @@ __all__ = [
 ]
 
 Status = Literal["pass", "fail", "skip"]
+
+#: How much of a result to serialise. See :meth:`CompoundScreen.as_dict`.
+#: An agent reads this output back, so the level is a cost decision.
+Detail = Literal["compact", "standard", "full"]
 
 
 @dataclass
@@ -460,7 +465,29 @@ class CompoundScreen:
         return [f"{o.label}: {o.detail or 'flagged'}"
                 for o in self.outcomes if o.advises]
 
-    def as_dict(self) -> dict[str, Any]:
+    #: Properties kept at ``compact`` detail. Enough to rank, filter and
+    #: explain a verdict without carrying every descriptor.
+    HEADLINE_PROPERTIES = ("mw", "logp", "tpsa", "hbd", "hba", "qed",
+                           "sa_score")
+
+    def as_dict(self, detail: Detail = "compact") -> dict[str, Any]:
+        """Serialise the result at the requested level of detail.
+
+        The level matters for cost, not just tidiness. An agent reads this
+        JSON back, so every field is paid for in context. Measured on a
+        50-compound strict screen, the per-check array alone is 84% of the
+        output and the whole file comes to roughly 1,400 tokens per
+        compound; at ``compact`` that falls by about an order of magnitude.
+
+        ``compact`` (the default)
+            Verdict, headline properties, and the reasons it failed. This
+            answers "which compounds survived, and why did the rest not?"
+        ``standard``
+            Adds the full descriptor set, for when the numbers are wanted.
+        ``full``
+            Adds every individual check with its limit and citation, for
+            auditing a threshold or reproducing a decision.
+        """
         out: dict[str, Any] = {
             "name": self.name,
             "smiles": self.smiles,
@@ -471,15 +498,28 @@ class CompoundScreen:
             out["source"] = self.source
         if self.error:
             out["error"] = self.error
+
         if self.properties is not None:
-            out["properties"] = self.properties.as_dict()
+            properties = self.properties.as_dict()
+            if detail == "compact":
+                out["properties"] = {
+                    k: properties[k] for k in self.HEADLINE_PROPERTIES
+                    if k in properties
+                }
+            else:
+                out["properties"] = properties
+
         if self.outcomes:
             out["checks_passed"] = self.n_passed
             out["checks_failed"] = self.n_failed
-            out["checks_skipped"] = self.n_skipped
-            out["failed_checks"] = self.failed_checks
-            out["advisories"] = self.advisories
-            out["checks"] = [o.as_dict() for o in self.outcomes]
+            if self.n_skipped:
+                out["checks_skipped"] = self.n_skipped
+            if self.failed_checks:
+                out["failed_checks"] = self.failed_checks
+            if self.advisories:
+                out["advisories"] = self.advisories
+            if detail == "full":
+                out["checks"] = [o.as_dict() for o in self.outcomes]
         return out
 
 
@@ -526,8 +566,19 @@ def screen_compound(record: CompoundRecord, tier: Tier) -> CompoundScreen:
 
 
 def screen_compounds(records: list[CompoundRecord],
-                     strictness: str = "strict") -> dict[str, Any]:
+                     strictness: str = "strict",
+                     detail: Detail = "compact") -> dict[str, Any]:
     """Screen a batch of compounds and return a complete, balanced report.
+
+    Args:
+        records: The compounds to screen.
+        strictness: A tier name from :data:`TIERS`.
+        detail: How much to serialise per compound. ``compact`` is the
+            default because the caller is usually an agent that reads this
+            JSON back, and the full form costs roughly ten times as much
+            context for information it rarely needs. The counts and
+            verdicts are identical at every level; only the per-compound
+            payload differs.
 
     Raises:
         KeyError: If *strictness* is not a known tier.
@@ -562,7 +613,12 @@ def screen_compounds(records: list[CompoundRecord],
         "checks_per_compound": tier.n_checks,
         "gating_checks_per_compound": tier.n_gating,
         "advisory_checks_per_compound": len(tier.advisory),
-        "tier_definition": tier.describe(),
+        # The full tier definition is ~830 tokens of fixed overhead that is
+        # identical in every report, so it is only embedded when the caller
+        # asked for detail. 'describe-tiers' prints it on demand.
+        **({"tier_definition": tier.describe()} if detail == "full" else
+           {"tier_definition_command":
+            "ag-compound-screening describe-tiers --output tiers.json"}),
         "total_compounds": len(screens),
         "passed": len(passed),
         "failed": len(failed),
@@ -578,5 +634,6 @@ def screen_compounds(records: list[CompoundRecord],
             "whether the flag matters for your series."
             if tier.advisory else ""
         ),
-        "compounds": [s.as_dict() for s in ordered],
+        "detail_level": detail,
+        "compounds": [s.as_dict(detail) for s in ordered],
     }

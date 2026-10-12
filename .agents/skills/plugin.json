@@ -1,0 +1,9 @@
+{
+  "name": "drug-discovery",
+  "version": "2.1.0",
+  "description": "Agent skills for structure-based drug discovery: target preparation, compound screening, generative chemistry, and molecular dynamics setup.",
+  "author": {
+    "name": "Walter Odur"
+  },
+  "license": "MIT"
+}

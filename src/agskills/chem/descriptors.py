@@ -116,13 +116,13 @@ def _sascorer():
     """
     try:
         from rdkit.Chem import RDConfig
-    except ImportError:  # pragma: no cover
-        from .._deps import ensure_packages
-        if not ensure_packages(["rdkit"], import_name="rdkit"):
-            raise MissingDependencyError(
-                "rdkit", install="Auto-install was attempted but failed."
-            )
-        from rdkit.Chem import RDConfig
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise MissingDependencyError(
+            "rdkit",
+            install="run the skill with 'uv run', which resolves the "
+                    "dependencies declared in the script's PEP 723 header, "
+                    "or install it directly with 'pip install rdkit'",
+        ) from exc
 
     contrib = os.path.join(RDConfig.RDContribDir, "SA_Score")
     if os.path.isdir(contrib) and contrib not in sys.path:

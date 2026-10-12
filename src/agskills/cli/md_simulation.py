@@ -89,6 +89,11 @@ def cmd_gmxapi_setup(args: argparse.Namespace) -> None:
 def cmd_gmxapi_validate(args: argparse.Namespace) -> None:
     reports = [validate_mdp_file(path, force_field=args.ff)
                for path in args.mdp]
+    if args.detail != "full":
+        # The parsed parameter dict is ~30 entries per file and is simply
+        # the input echoed back; errors and warnings are the result.
+        for report in reports:
+            report.pop("parameters", None)
     all_valid = all(r["valid"] for r in reports)
     payload = {
         "all_valid": all_valid,

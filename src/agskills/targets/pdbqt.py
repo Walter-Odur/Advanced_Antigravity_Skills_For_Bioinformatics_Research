@@ -29,7 +29,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .._deps import ensure_meeko, ensure_openbabel
 from ..errors import MissingDependencyError
 from ..io_utils import ensure_parent, require_file, write_text
 
@@ -37,10 +36,10 @@ __all__ = ["ConversionResult", "receptor_to_pdbqt", "ligand_to_pdbqt",
            "available_converters", "find_executable"]
 
 _INSTALL_HINT = (
-    "Auto-installation of meeko and Open Babel was attempted but "
-    "did not succeed. Check your internet connection and try again, "
-    "or install a PDBQT converter manually (meeko, Open Babel, or "
-    "the ADFR Suite)."
+    "Install a PDBQT converter. Running the skill with 'uv run' resolves "
+    "meeko from the script's PEP 723 header automatically; otherwise use "
+    "'pip install meeko scipy gemmi' (pure Python, cross-platform), "
+    "'conda install -c conda-forge openbabel', or the ADFR Suite."
 )
 
 #: Meeko reports unmatched residues as a Python-style list of "CHAIN:RESSEQ".
@@ -48,7 +47,6 @@ _BAD_RES_RE = re.compile(r"Template matching failed for:\s*\[([^\]]*)\]")
 _RES_TOKEN_RE = re.compile(r"'([^']+)'")
 
 
-# _auto_install_meeko removed -- using centralized _deps.ensure_meeko()
 
 
 @dataclass
@@ -307,90 +305,6 @@ def receptor_to_pdbqt(pdb_path: str | Path,
         except Exception as exc:
             warnings.append(f"prepare_receptor failed: {exc}")
 
-    # --- Auto-install Meeko if nothing was found ---------------------------
-    if not meeko_exe and not obabel and not adfr:
-        installed = ensure_meeko()
-        if installed:
-            meeko_exe = find_executable("mk_prepare_receptor")
-            if meeko_exe:
-                stem = destination.with_suffix("")
-                base_command = [meeko_exe, "--read_pdb", str(source),
-                                "-o", str(stem), "-p",
-                                "--default_altloc", default_altloc]
-                try:
-                    proc = _run(base_command)
-                    combined = (proc.stdout or "") + (proc.stderr or "")
-                    if destination.is_file() and destination.stat().st_size > 0:
-                        warnings.append(
-                            "meeko was auto-installed to provide PDBQT "
-                            "conversion."
-                        )
-                        return ConversionResult(
-                            True, str(destination), "meeko",
-                            "Receptor PDBQT written by mk_prepare_receptor "
-                            "(auto-installed; all residues matched).",
-                            strict=True, warnings=warnings,
-                        )
-                    bad = _parse_bad_residues(combined)
-                    if bad and allow_incomplete_residues:
-                        proc = _run(base_command + ["-a"])
-                        if destination.is_file() and \
-                                destination.stat().st_size > 0:
-                            in_box = _residues_in_box(bad, source, site)
-                            warnings.append(
-                                "meeko was auto-installed to provide PDBQT "
-                                "conversion."
-                            )
-                            warnings.append(
-                                f"{len(bad)} residue(s) did not match a "
-                                "chemical template. Meeko padded them: "
-                                f"{', '.join(bad[:12])}"
-                                + (f" (+{len(bad) - 12} more)"
-                                   if len(bad) > 12 else "")
-                            )
-                            if in_box:
-                                warnings.append(
-                                    "IMPORTANT: "
-                                    f"{len(in_box)} of those residue(s) lie "
-                                    "inside the docking box "
-                                    f"({', '.join(in_box)})."
-                                )
-                            return ConversionResult(
-                                True, str(destination), "meeko",
-                                "Receptor PDBQT written by mk_prepare_receptor"
-                                " (auto-installed; permissive mode).",
-                                strict=False, compromised_residues=bad,
-                                warnings=warnings,
-                            )
-                except Exception as exc:
-                    warnings.append(
-                        f"mk_prepare_receptor failed after auto-install: {exc}"
-                    )
-
-        # Meeko auto-install failed or produced no output -- try Open Babel
-        if ensure_openbabel():
-            obabel = find_executable("obabel")
-            if obabel:
-                try:
-                    proc = _run([obabel, str(source), "-O",
-                                 str(destination), "-xr", "-p", "7.4"])
-                    if destination.is_file() and \
-                            destination.stat().st_size > 0:
-                        warnings.append(
-                            "Open Babel was auto-installed to provide "
-                            "PDBQT conversion."
-                        )
-                        return ConversionResult(
-                            True, str(destination), "obabel",
-                            "Receptor PDBQT written by Open Babel "
-                            "(auto-installed; rigid, pH 7.4).",
-                            strict=False, warnings=warnings,
-                        )
-                except Exception as exc:
-                    warnings.append(
-                        f"obabel failed after auto-install: {exc}"
-                    )
-
     return ConversionResult(
         ok=False, output_path=None, converter="none",
         message=(
@@ -415,14 +329,14 @@ def ligand_to_pdbqt(mol, *, name: str = "ligand") -> str:
     """
     try:
         from meeko import MoleculePreparation, PDBQTWriterLegacy
-    except ImportError:
-        if not ensure_meeko():
-            raise MissingDependencyError(
-                "meeko (required to write ligand PDBQT files)",
-                install="Auto-install was attempted but failed. "
-                        "Check your internet connection and try again.",
-            )
-        from meeko import MoleculePreparation, PDBQTWriterLegacy
+    except ImportError as exc:
+        raise MissingDependencyError(
+            "meeko (required to write ligand PDBQT files)",
+            install="run the skill with 'uv run', which resolves the "
+                    "dependencies declared in the script's PEP 723 header, "
+                    "or install it directly with "
+                    "'pip install meeko scipy gemmi'",
+        ) from exc
 
     preparator = MoleculePreparation()
     setups = preparator.prepare(mol)

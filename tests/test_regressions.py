@@ -277,7 +277,7 @@ def test_lipinski_violations_are_absolute_not_tier_relative():
     # Reported identically at both tiers, including the limit named.
     for strictness in ("relaxed", "strict"):
         report = screen_compounds([CompoundRecord("heavy", heavy.smiles)],
-                                  strictness)
+                                  strictness, detail="full")
         check = next(c for c in report["compounds"][0]["checks"]
                      if c["check"] == "lipinski")
         assert check["value"] >= 1, strictness
@@ -506,10 +506,11 @@ def test_the_documented_check_count_is_the_performed_check_count():
     summary = tier_summary()
     for name, tier in TIERS.items():
         assert summary[name] == len(tier.checks)
-        report = screen_compounds([CompoundRecord("x", "CCO")], name)
+        report = screen_compounds([CompoundRecord("x", "CCO")], name,
+                                  detail="full")
         performed = report["compounds"][0]
         assert (performed["checks_passed"] + performed["checks_failed"]
-                + performed["checks_skipped"]) == summary[name]
+                + performed.get("checks_skipped", 0)) == summary[name]
         assert report["checks_per_compound"] == summary[name]
     # And the real numbers are substantially more than three.
     assert summary["relaxed"] >= 10

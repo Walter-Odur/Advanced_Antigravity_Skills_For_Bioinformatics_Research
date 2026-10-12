@@ -3,17 +3,22 @@
 Five agent skills for structure-based drug discovery, sharing one tested
 implementation.
 
-| Skill | Console command | Does |
+| Skill | Folder | Does |
 |---|---|---|
-| `target-preparation` | `ag-target-preparation` | Fetch, clean and assess protein structures; define docking sites |
-| `compound-screening` | `ag-compound-screening` | Search ChEMBL, COCONUT and ZINC; dock with Vina; two-tier ADMET screening |
-| `compound-synthesis` | `ag-compound-synthesis` | REINVENT 4 generative chemistry |
-| `md-simulation` | `ag-md-simulation` | GROMACS workflows and cluster submission scripts |
-| `drug-discovery-wizard` | `ag-wizard` | Orchestrate the four above end to end |
+| `target-preparation` | `target_preparation/` | Fetch, clean and assess protein structures; define docking sites |
+| `compound-screening` | `compound_screening/` | Search ChEMBL, COCONUT and ZINC; dock with Vina; two-tier ADMET screening |
+| `compound-synthesis` | `compound_synthesis/` | REINVENT 4 generative chemistry |
+| `md-simulation` | `md_simulation/` | GROMACS workflows and cluster submission scripts |
+| `drug-discovery-wizard` | `drug_discovery_wizard/` | Orchestrate the four above end to end |
 
-Each skill's `SKILL.md` lives under `.agents/skills/<skill>/` and is the
+Each skill's `SKILL.md` lives under `.agents/skills/<folder>/` and is the
 reference for using it. The science lives in one package, `agskills`, under
 `src/`.
+
+Packaging follows the [Google DeepMind science-skills](https://github.com/google-deepmind/science-skills)
+bundle: `snake_case` folders with a `kebab-case` YAML `name:`, `scripts/`
+and `references/` beside each `SKILL.md`, `citation.bib` per skill, and
+`uv run` with PEP 723 inline dependencies as the invocation.
 
 ## Install
 
@@ -148,6 +153,26 @@ ag-wizard run --pdb-id 6HEZ --chain A \
     --workdir pipeline --output pipeline.json
 ```
 
+## Output size and context cost
+
+A `SKILL.md` is loaded every time its skill triggers, and the JSON a
+subcommand writes is read back by the caller, so both are paid for in
+tokens on every use. Three measures keep that bounded:
+
+-   **`--detail compact` is the default.** It carries verdicts, headline
+    numbers and the reasons behind them. `--detail full` adds every
+    individual check, parameter and descriptor. Measured on a 50-compound
+    strict screen, full output is roughly 1,400 tokens per compound and
+    compact is about 115 - a 92% saving for information rarely needed.
+-   **Results go to a file; stdout stays short.** A 300-compound screen
+    prints under 60 lines whatever its size. Read fields from the file with
+    `jq` or a short Python expression rather than printing it whole.
+-   **Depth lives in `references/`**, read only on demand, so each
+    `SKILL.md` stays near 2,000 tokens.
+
+Verdicts, counts and ordering are identical at every detail level; only the
+per-compound payload changes.
+
 ## Configuration
 
 All optional. Nothing is hardcoded to a particular machine.
@@ -176,8 +201,15 @@ src/agskills/               the shared implementation
   md/                       MDP generation and validation, GROMACS workflows
   reinvent/                 REINVENT 4 setup, configs, scoring, analysis
   cli/                      one entry point per skill
-.agents/skills/<skill>/     SKILL.md, reference docs, a thin launcher
-tests/                      the test suite and its real data fixtures
+.agents/skills/             the shipped bundle
+  plugin.json               bundle manifest
+  SKILL_LICENSES.md         third-party data source terms
+  <skill>/SKILL.md          the skill's instructions
+  <skill>/scripts/          a thin PEP 723 launcher
+  <skill>/references/       citation.bib and on-demand depth
+tests/                      the test suite and its real data fixtures.
+                            Not shipped: tests confirm the skills work,
+                            they are not part of them
 tools/                      generators for documentation derived from code
 ```
 

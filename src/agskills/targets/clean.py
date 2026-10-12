@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from .._deps import ensure_biopython
 from ..errors import InvalidInputError, MissingDependencyError
 from ..io_utils import ensure_parent, require_file
 
@@ -83,13 +82,13 @@ def _biopython():
     try:
         from Bio.PDB import PDBIO, PDBParser, Select  # noqa: PLC0415
         return PDBParser, PDBIO, Select
-    except ImportError:  # pragma: no cover
-        if not ensure_biopython():
-            raise MissingDependencyError(
-                "biopython", install="Auto-install was attempted but failed."
-            )
-        from Bio.PDB import PDBIO, PDBParser, Select  # noqa: PLC0415
-        return PDBParser, PDBIO, Select
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise MissingDependencyError(
+            "biopython",
+            install="run the skill with 'uv run', which resolves the "
+                    "dependencies declared in the script's PEP 723 header, "
+                    "or install it directly with 'pip install biopython'",
+        ) from exc
 
 
 def clean_structure(

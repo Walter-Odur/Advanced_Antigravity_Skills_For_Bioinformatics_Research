@@ -53,15 +53,11 @@ output, with its limit and its literature citation.
 
 def cmd_admet_filter(args: argparse.Namespace) -> None:
     records = compounds_from_args(args)
-    result = screen_compounds(records, strictness=args.strictness)
+    result = screen_compounds(records, strictness=args.strictness,
+                              detail=args.detail)
     if args.passing_only:
         result["compounds"] = [c for c in result["compounds"]
                                if c.get("overall_pass")]
-    if not args.include_check_detail:
-        # The per-check array is verbose; keep the failure reasons.
-        for compound in result["compounds"]:
-            compound.pop("checks", None)
-        result["tier_definition"].pop("checks", None)
 
     lines = [
         f"ADMET screening: {result['tier']} "
@@ -264,7 +260,8 @@ def cmd_dock(args: argparse.Namespace) -> None:
 def cmd_admet_predict(args: argparse.Namespace) -> None:
     """Online ADMET enrichment, with an honest account of availability."""
     records = compounds_from_args(args)
-    result = screen_compounds(records, strictness=args.strictness)
+    result = screen_compounds(records, strictness=args.strictness,
+                              detail=args.detail)
     result["online_prediction"] = {
         "attempted": False,
         "reason": (
@@ -309,8 +306,6 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Screening tier (default: strict).")
     p.add_argument("--passing-only", action="store_true",
                    help="Write only the compounds that passed.")
-    p.add_argument("--include-check-detail", action="store_true",
-                   help="Include every individual check in the output.")
     p.add_argument("--show", type=int, default=12,
                    help="How many compounds to summarise on stdout.")
     add_output(p, help_text="Output JSON report.")
@@ -412,7 +407,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_compound_inputs(p)
     p.add_argument("--strictness", default="strict", choices=sorted(TIERS))
     p.add_argument("--passing-only", action="store_true")
-    p.add_argument("--include-check-detail", action="store_true", default=True)
     p.add_argument("--show", type=int, default=12)
     add_output(p, help_text="Output JSON report.")
     add_common_flags(p)

@@ -116,25 +116,14 @@ def cmd_plan(args: argparse.Namespace) -> None:
     reinvent = check_setup(args.reinvent_dir)
     converters = available_converters()
 
-    # Auto-install GROMACS if absent
+    # 'plan' only reports. It installs nothing and changes nothing: a
+    # command whose stated job is to say what this machine can do must not
+    # be the command that modifies it.
     try:
         import shutil
-        from .._deps import ensure_gromacs
         gromacs = shutil.which("gmx") or shutil.which("gmx_mpi")
-        if not gromacs:
-            ensure_gromacs()
-            gromacs = shutil.which("gmx") or shutil.which("gmx_mpi")
     except Exception:
         gromacs = None
-
-    # Auto-install REINVENT if absent
-    if not reinvent["ready"]:
-        try:
-            from .._deps import ensure_reinvent
-            if ensure_reinvent():
-                reinvent = check_setup(args.reinvent_dir)
-        except Exception:
-            pass
 
     conv_note = (", ".join(converters)
                  if converters

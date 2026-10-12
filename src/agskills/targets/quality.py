@@ -84,6 +84,31 @@ class PlddtReport:
                 data[key] = round(data[key], 2)
         return data
 
+    def summary(self) -> dict[str, Any]:
+        """The verdict and the numbers behind it, without the per-region detail.
+
+        Embedded by other commands' reports. The full form is roughly five
+        times larger, mostly ``low_confidence_regions`` and ``per_chain``,
+        and an agent reading a receptor report wants the verdict rather than
+        a residue-by-residue breakdown. ``assess-structure`` produces the
+        full report when it is actually needed.
+        """
+        return {
+            "verdict": self.verdict,
+            "reason": self.reason,
+            "scale": self.scale,
+            "n_residues": self.n_residues,
+            "chains": self.chains,
+            "mean_plddt": (round(self.mean_plddt, 2)
+                           if self.mean_plddt is not None else None),
+            "residues_below_50": self.residues_very_low,
+            "n_low_confidence_regions": len(self.low_confidence_regions),
+            "actions": self.actions,
+            "full_report_command":
+                "ag-target-preparation assess-structure --pdb <file> "
+                "--output quality.json",
+        }
+
 
 def extract_plddt(pdb_text: str) -> list[ResidueConfidence]:
     """Extract per-residue CA B-factors, keyed by chain and residue.

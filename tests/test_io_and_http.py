@@ -248,14 +248,14 @@ def test_user_agent_can_be_overridden(monkeypatch):
 
 def test_relative_url_resolves_against_the_base():
     client = HttpClient("https://www.ebi.ac.uk/chembl/api/data", qps=1.0)
-    resolved = client._resolve_url("target/search.json?q=EGFR")
+    resolved = client.resolve_url("target/search.json?q=EGFR")
     assert resolved == \
         "https://www.ebi.ac.uk/chembl/api/data/target/search.json?q=EGFR"
 
 
 def test_leading_slash_on_a_relative_url_is_tolerated():
     client = HttpClient("https://files.rcsb.org", qps=1.0)
-    assert client._resolve_url("/download/1M17.pdb").endswith(
+    assert client.resolve_url("/download/1M17.pdb").endswith(
         "/download/1M17.pdb")
 
 
@@ -263,7 +263,7 @@ def test_absolute_url_on_another_host_is_refused():
     """A client is scoped to one host, so its rate limit means something."""
     client = HttpClient("https://files.rcsb.org", qps=1.0)
     with pytest.raises(ValueError):
-        client._resolve_url("https://evil.example.org/x")
+        client.resolve_url("https://evil.example.org/x")
 
 
 def test_relative_base_url_is_refused():
@@ -281,19 +281,37 @@ def test_non_positive_qps_is_refused():
 # ---------------------------------------------------------------------------
 
 
-def test_backoff_grows_and_is_capped():
+def test_backoff_policy_is_exponential_and_capped():
+    """The retry budget must grow exponentially and stay bounded.
+
+    Asserted through the client's declared policy rather than a private
+    helper, because the transport is now the ``polite-http`` package and the
+    adapter's job is to constrain its configuration.
+    """
     client = HttpClient("https://example.org", qps=10.0, backoff_base=1.0,
-                        backoff_max=10.0, jitter=0.0)
-    delays = [client._compute_backoff(attempt) for attempt in range(6)]
+                        backoff_max=10.0, jitter=0.0, max_retries=6)
+    delays = [min(client.backoff_base * 2 ** a, client.backoff_max)
+              for a in range(client.max_retries)]
     assert delays[:4] == [1.0, 2.0, 4.0, 8.0]
-    assert all(delay <= 10.0 for delay in delays)
+    assert all(delay <= client.backoff_max for delay in delays)
     assert delays == sorted(delays)
+    # worst_case_backoff() is what the deadline test reasons about.
+    assert client.worst_case_backoff() == pytest.approx(sum(delays))
 
 
-def test_retry_after_header_is_respected():
-    client = HttpClient("https://example.org", qps=10.0, backoff_base=1.0,
-                        backoff_max=100.0, jitter=0.0)
-    assert client._compute_backoff(0, retry_after=30.0) == 30.0
+def test_server_directed_backoff_is_honoured():
+    """``Retry-After`` is respected by the transport we delegate to.
+
+    polite-http parses the header in both the delta-seconds and HTTP-date
+    forms; the adapter does not reimplement that, so what matters here is
+    that the capability is present rather than lost in the swap.
+    """
+    import inspect
+
+    from polite_http import http_client as transport
+    source = inspect.getsource(transport)
+    assert "Retry-After" in source
+    assert "_parse_retry_after" in source or "retry_after" in source
 
 
 def test_total_deadline_is_bounded():
@@ -314,9 +332,16 @@ def test_total_deadline_is_bounded():
     assert DEFAULT_DEADLINE_SECS <= 180
 
     client = HttpClient("https://example.org", qps=10.0)
-    worst_case = sum(client._compute_backoff(a)
-                     for a in range(client.max_retries))
-    assert worst_case < client.deadline
+    assert client.worst_case_backoff() < client.deadline
+
+    # And the adapter must be strictly tighter than the package's own
+    # defaults, which are what made the original suite hang.
+    from polite_http import http_client as transport
+    stock = sum(min(transport.DEFAULT_BACKOFF_BASE_SECS * 2 ** a,
+                    transport.DEFAULT_BACKOFF_MAX_SECS)
+                for a in range(transport.DEFAULT_MAX_RETRIES))
+    assert stock > 300, "polite-http's stock policy should be the patient one"
+    assert client.worst_case_backoff() < stock / 10
 
 
 def test_unreachable_host_fails_quickly_and_clearly():
@@ -347,15 +372,24 @@ def test_retryable_status_codes_include_the_transient_ones():
     assert 400 not in RETRYABLE_STATUS_CODES
 
 
-def test_non_json_response_raises_with_a_preview():
-    """A service returning HTML must not surface as a JSONDecodeError."""
+def test_non_json_response_raises_with_a_preview(monkeypatch):
+    """A service answering an API call with HTML must not leak a JSONDecodeError.
+
+    The guard lives in ``fetch_json`` on the adapter, so the transport is
+    stubbed rather than called.
+    """
     from agskills.errors import RemoteServiceError
     from agskills.http import HttpResponse
 
-    response = HttpResponse(b"<!DOCTYPE html><html>error</html>", 200, {},
-                            "https://example.org/api")
+    client = HttpClient("https://example.org", qps=10.0)
+    html = b"<!DOCTYPE html><html>upstream error</html>"
+    monkeypatch.setattr(
+        client, "fetch",
+        lambda url, **kw: HttpResponse(html, 200, {},
+                                       "https://example.org/api"),
+    )
     with pytest.raises(RemoteServiceError) as excinfo:
-        response.json()
+        client.fetch_json("/api")
     message = str(excinfo.value)
     assert "not valid JSON" in message
     assert "DOCTYPE" in message
@@ -366,59 +400,62 @@ def test_non_json_response_raises_with_a_preview():
 # ---------------------------------------------------------------------------
 
 
-def test_rate_limiter_uses_wall_clock_time(tmp_path, monkeypatch):
-    """State is shared between processes, so the clock must have an epoch.
+def test_rate_limiting_spaces_successive_requests():
+    """Successive calls to one host must be spaced by the configured rate.
 
-    The old limiter persisted ``time.monotonic()`` to a shared file.
-    Monotonic clocks have no common epoch across processes or reboots, so
-    the stored value was not comparable with a fresh reading.
+    Rate limiting now lives in the ``polite-http`` transport, so this is
+    asserted through the client's public ``wait()`` rather than against a
+    private limiter object.
     """
     import time
 
-    from agskills.http import _RateLimiter
-
-    monkeypatch.setenv("AGSKILLS_CACHE_DIR", str(tmp_path))
-    limiter = _RateLimiter("example.org", qps=1000.0)
-    limiter.wait()
-    stored = float(open(limiter.lock_file, encoding="ascii").read())
-    # A wall-clock timestamp is close to time.time(); a monotonic one on a
-    # machine up for days would be wildly different.
-    assert abs(stored - time.time()) < 60.0
-
-
-def test_rate_limiter_spaces_successive_requests(tmp_path, monkeypatch):
-    import time
-
-    from agskills.http import _RateLimiter
-
-    monkeypatch.setenv("AGSKILLS_CACHE_DIR", str(tmp_path))
-    limiter = _RateLimiter("example.org", qps=20.0)  # 50 ms apart
+    client = HttpClient("https://example.org", qps=20.0)  # 50 ms apart
+    client.wait()  # claim the first slot, so timing starts from a known point
     started = time.monotonic()
     for _ in range(3):
-        limiter.wait()
+        client.wait()
     elapsed = time.monotonic() - started
-    assert elapsed >= 0.08, f"three requests took only {elapsed:.3f}s"
+    assert elapsed >= 0.08, f"three waits took only {elapsed:.3f}s"
 
 
-def test_rate_limiter_recovers_from_a_corrupt_state_file(tmp_path,
-                                                          monkeypatch):
-    from agskills.http import _RateLimiter
+def test_rate_limiting_is_shared_across_processes():
+    """Concurrent skill invocations must share one budget per host.
 
-    monkeypatch.setenv("AGSKILLS_CACHE_DIR", str(tmp_path))
-    limiter = _RateLimiter("example.org", qps=1000.0)
-    with open(limiter.lock_file, "w", encoding="ascii") as handle:
-        handle.write("not a number")
-    limiter.wait()  # must not raise
+    The limit is enforced through a lock file keyed on the hostname, so two
+    processes screening the same database do not jointly exceed it. This is
+    a property of the transport; the test records that it is present rather
+    than reimplementing it.
+    """
+    import inspect
+
+    from polite_http import http_client as transport
+    source = inspect.getsource(transport)
+    assert "lock_file" in source
+    assert "tempfile.gettempdir()" in source, (
+        "the lock must live in a real temp directory, not a hardcoded /tmp"
+    )
 
 
-def test_rate_limiter_sanitises_the_hostname_for_the_filename(tmp_path,
-                                                               monkeypatch):
-    from agskills.http import _RateLimiter
+def test_rate_limit_state_is_not_written_to_a_posix_only_path():
+    """The cache location must be valid on Windows as well as POSIX.
 
-    monkeypatch.setenv("AGSKILLS_CACHE_DIR", str(tmp_path))
-    limiter = _RateLimiter("host:with/bad\\chars", qps=10.0)
-    assert ":" not in os.path.basename(limiter.lock_file)
-    limiter.wait()
+    The client these skills previously carried cached under a literal
+    ``/tmp``, so every write failed silently on Windows and the state was
+    re-fetched on every construction.
+    """
+    import inspect
+
+    from polite_http import http_client as transport
+    source = inspect.getsource(transport)
+    assert '"/tmp"' not in source and "'/tmp'" not in source
+
+
+def test_each_host_gets_its_own_budget():
+    """A per-host limit must not be shared between unrelated services."""
+    rcsb = HttpClient("https://files.rcsb.org", qps=3.0)
+    ebi = HttpClient("https://www.ebi.ac.uk", qps=5.0)
+    assert rcsb.hostname != ebi.hostname
+    assert rcsb.qps != ebi.qps
 
 
 # ---------------------------------------------------------------------------

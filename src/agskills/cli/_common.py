@@ -80,6 +80,16 @@ def add_common_flags(parser: argparse.ArgumentParser) -> None:
                        help="Suppress the human-readable summary on stdout.")
     group.add_argument("-v", "--verbose", action="store_true",
                        help="Log library activity, including HTTP retries.")
+    parser.add_argument(
+        "--detail", default="compact",
+        choices=["compact", "standard", "full"],
+        help="How much to write to --output. 'compact' (default) carries "
+             "verdicts, headline numbers and the reasons behind them; "
+             "'full' adds every check, parameter and descriptor. The "
+             "caller normally reads this file back, and full output costs "
+             "roughly ten times as much context for detail that is rarely "
+             "needed.",
+    )
 
 
 def add_compound_inputs(parser: argparse.ArgumentParser, *,

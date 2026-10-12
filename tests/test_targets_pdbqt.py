@@ -186,7 +186,7 @@ def test_no_converter_reports_advice_rather_than_succeeding(tmp_path,
     assert result.ok is False
     assert result.output_path is None
     assert result.converter == "none"
-    assert "Auto-installation" in result.message
+    assert "uv run" in result.message
     assert str(source) in result.message
 
 
@@ -313,13 +313,14 @@ def test_ligand_conversion_without_meeko_names_the_install(monkeypatch):
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", blocked)
-    # Also block auto-install so the error surfaces.
-    monkeypatch.setattr("agskills.targets.pdbqt.ensure_meeko", lambda: False)
     with pytest.raises(MissingDependencyError) as excinfo:
         ligand_to_pdbqt(None, name="test")
     message = str(excinfo.value)
     assert "meeko" in message
-    assert "Auto-install" in message
+    # The guidance must be actionable: it names the canonical route first
+    # (uv resolves the script's PEP 723 header) and a direct fallback.
+    assert "uv run" in message
+    assert "pip install meeko" in message
 
 
 # ---------------------------------------------------------------------------
@@ -352,11 +353,24 @@ def test_real_receptor_conversion_on_6hez(pdb_6hez, tmp_path):
     assert any(line.rstrip().endswith(("A", "C", "N", "OA", "NA", "SA", "HD"))
                for line in atom_lines)
 
-    # 6HEZ has incomplete side chains, so this is the permissive path, and
-    # the report must say which residues were affected and where.
-    if not result.strict:
+    # Which converter ran decides what the report should say. Meeko matches
+    # every residue against a chemical template, and 6HEZ has 16 residues in
+    # chain A with missing side-chain atoms, so Meeko necessarily takes the
+    # permissive path and must name them. Open Babel does not validate
+    # residue chemistry at all, so it is non-strict for a different reason
+    # and has nothing to report -- conflating the two would make this test
+    # fail on a machine where only Open Babel is installed.
+    if result.converter == "meeko":
+        assert not result.strict, (
+            "6HEZ has incomplete side chains, so strict Meeko conversion "
+            "cannot succeed"
+        )
         assert result.compromised_residues
         assert any("template" in w for w in result.warnings)
+    else:
+        assert result.strict is False or result.compromised_residues == []
+        assert any(result.converter in w or "Meeko" in w
+                   for w in result.warnings + [result.message])
 
 
 @pytest.mark.slow

@@ -222,15 +222,16 @@ def run_reinvent(config_path: str | Path, *, log_path: str | None = None,
 
     executable = checks["reinvent_executable"]
     if not executable:
-        from .._deps import ensure_reinvent
-        if ensure_reinvent():
-            executable = shutil.which("reinvent")
-        if not executable:
-            raise MissingDependencyError(
-                "the 'reinvent' command",
-                install="Auto-install via git clone was attempted but "
-                        "did not succeed. Check your internet connection.",
-            )
+        raise MissingDependencyError(
+            "the 'reinvent' command",
+            install=(
+                "clone and install REINVENT 4, then re-run 'check-setup': "
+                "git clone https://github.com/MolecularAI/REINVENT4 && "
+                "pip install -e REINVENT4 && "
+                "export REINVENT_DIR=$PWD/REINVENT4. "
+                "Prior models: https://doi.org/10.5281/zenodo.15641296"
+            ),
+        )
 
     if dry_run:
         return {"dry_run": True, "would_run": [executable, str(path)],

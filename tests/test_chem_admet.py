@@ -43,11 +43,13 @@ def test_tier_check_counts_are_derived_from_the_registry():
         assert tier.n_checks == len(tier.checks)
         # And the count is what a screen reports.
         report = screen_compounds([CompoundRecord("x", "CCO")],
-                                  strictness=name)
+                                  strictness=name, detail="full")
         assert report["checks_per_compound"] == len(tier.checks)
         performed = report["compounds"][0]
+        # Zero-valued keys are omitted from the output to save the caller
+        # context, so they are read tolerantly here.
         total = (performed["checks_passed"] + performed["checks_failed"]
-                 + performed["checks_skipped"])
+                 + performed.get("checks_skipped", 0))
         assert total == len(tier.checks)
 
 
@@ -156,7 +158,7 @@ def test_a_skipped_check_does_not_count_as_a_pass(monkeypatch):
     monkeypatch.setattr("agskills.chem.descriptors._sascorer", lambda: None)
     report = screen_compounds([CompoundRecord("aspirin",
                                               "CC(=O)Oc1ccccc1C(=O)O")],
-                              strictness="relaxed")
+                              strictness="relaxed", detail="full")
     compound = report["compounds"][0]
     sa_checks = [c for c in compound["checks"] if c["check"] == "sa_score"]
     assert len(sa_checks) == 1
@@ -256,7 +258,7 @@ def test_report_is_json_serialisable_and_self_describing():
     """A report must record how it was produced, not just its verdicts."""
     report = screen_compounds([CompoundRecord("aspirin",
                                               "CC(=O)Oc1ccccc1C(=O)O")],
-                              strictness="strict")
+                              strictness="strict", detail="full")
     json.dumps(report)
     for key in ("engine", "strictness", "tier", "tier_purpose",
                 "checks_per_compound", "tier_definition", "total_compounds",
@@ -270,7 +272,7 @@ def test_report_is_json_serialisable_and_self_describing():
 def test_each_failed_check_states_a_limit_and_a_measurement():
     """A failure must be actionable."""
     report = screen_compounds([CompoundRecord("ethanol", "CCO")],
-                              strictness="strict")
+                              strictness="strict", detail="full")
     compound = report["compounds"][0]
     failed = [c for c in compound["checks"] if c["status"] == "fail"]
     assert failed
@@ -283,7 +285,7 @@ def test_numeric_checks_carry_citations_where_the_source_is_published():
     """A user must be able to trace a threshold to its paper."""
     report = screen_compounds([CompoundRecord("aspirin",
                                               "CC(=O)Oc1ccccc1C(=O)O")],
-                              strictness="strict")
+                              strictness="strict", detail="full")
     checks = report["compounds"][0]["checks"]
     cited = [c for c in checks if c.get("citation")]
     # Every rule and alert check is published; the plain property windows
@@ -328,11 +330,12 @@ def test_a_risk_flag_does_not_block_a_lead_like_compound():
     """
     series = CompoundRecord("quinazoline",
                             "COc1cc2ncnc(Nc3cccc(Br)c3)c2cc1OC")
-    report = screen_compounds([series], strictness="relaxed")
+    report = screen_compounds([series], strictness="relaxed",
+                              detail="full")
     compound = report["compounds"][0]
 
     assert compound["overall_pass"] is True
-    assert compound["failed_checks"] == []
+    assert compound.get("failed_checks", []) == []
     # The liability is still visible, just not disqualifying.
     assert any("Pfizer" in advisory for advisory in compound["advisories"])
 
@@ -344,7 +347,7 @@ def test_a_risk_flag_does_not_block_a_lead_like_compound():
 def test_advisory_checks_are_declared_in_the_tier_definition():
     """A reader of the output must be able to tell which checks gate."""
     report = screen_compounds([CompoundRecord("x", "CCO")],
-                              strictness="relaxed")
+                              strictness="relaxed", detail="full")
     definition = report["tier_definition"]
     assert definition["n_checks"] == report["checks_per_compound"]
     assert (definition["n_gating_checks"]

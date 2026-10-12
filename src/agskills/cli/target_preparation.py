@@ -77,7 +77,9 @@ def cmd_prepare_receptor(args: argparse.Namespace) -> None:
     )
 
     quality = assess_structure(structure)
-    result["quality"] = quality.as_dict()
+    # The summary, not the full report: the full form is about half of this
+    # file's tokens and an agent reading it wants the verdict.
+    result["quality"] = quality.as_dict() if args.detail == "full"         else quality.summary()
 
     # Derive the site before converting, so the converter can report
     # whether any residue it had to approximate lies inside the box.
@@ -119,8 +121,9 @@ def cmd_prepare_receptor(args: argparse.Namespace) -> None:
         "No bound ligand was found, so define the docking box from pocket "
         "residues: define-site --pdb <file> --residues A:123 A:124 ..."
         if not ligands else
-        "PDBQT conversion was not available. Auto-installation of meeko "
-        "and Open Babel was attempted but did not succeed."
+        "PDBQT conversion is unavailable. Run the skill with 'uv run', "
+        "which resolves meeko automatically, or install a converter: "
+        "pip install meeko scipy gemmi"
     )
 
     emit_json(result, args, summary=[

@@ -36,19 +36,18 @@ __all__ = [
 
 
 def _rdkit():
-    """Import RDKit, auto-installing it if missing."""
+    """Import RDKit, raising a typed error with install advice."""
     try:
         from rdkit import Chem  # noqa: PLC0415
         return Chem
-    except ImportError:  # pragma: no cover - environment dependent
-        from .._deps import ensure_packages
-        if ensure_packages(["rdkit"], import_name="rdkit"):
-            from rdkit import Chem  # noqa: PLC0415
-            return Chem
+    except ImportError as exc:  # pragma: no cover - environment dependent
         from ..errors import MissingDependencyError
         raise MissingDependencyError(
-            "rdkit", install="Auto-install was attempted but failed."
-        )
+            "rdkit",
+            install="run the skill with 'uv run', which resolves the "
+                    "dependencies declared in the script's PEP 723 header, "
+                    "or install it directly with 'pip install rdkit'",
+        ) from exc
 
 
 @contextlib.contextmanager
