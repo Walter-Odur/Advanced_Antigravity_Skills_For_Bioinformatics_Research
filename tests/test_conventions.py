@@ -459,3 +459,227 @@ def test_stdout_summary_is_bounded(tmp_path, capsys):
     assert code == 0
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) < 60, f"stdout printed {len(lines)} lines for 300 compounds"
+
+
+# --------------------------------------------------------------------------
+# Verification protocols
+#
+# Each skill has a hand-written TEST.md under ``verification/`` recording a
+# protocol a person can work through, with every expected value measured
+# rather than quoted from the documentation. They are deliberately *not*
+# inside ``.agents/skills``: a bundle a user downloads should carry the
+# skill, not its test plan.
+# --------------------------------------------------------------------------
+
+VERIFICATION = ROOT / "verification"
+
+
+def test_every_skill_has_a_verification_protocol():
+    missing = [name for name in SKILL_SCRIPTS
+               if not (VERIFICATION / name / "TEST.md").is_file()]
+    assert not missing, f"skills with no verification/<skill>/TEST.md: {missing}"
+
+
+def test_verification_protocols_are_not_shipped():
+    """A TEST.md inside the bundle would be shipped weight."""
+    strays = [str(p.relative_to(SKILLS))
+              for p in SKILLS.rglob("TEST.md")]
+    assert not strays, f"verification protocols shipped in the skills: {strays}"
+
+
+def test_verification_directories_match_the_skills():
+    """No protocol for a skill that no longer exists.
+
+    Only directories holding a ``TEST.md`` are considered: ``verification/``
+    is a working folder and may hold other material - review notes, archives
+    - that has nothing to do with these protocols.
+    """
+    orphans = [d.name for d in VERIFICATION.iterdir()
+               if d.is_dir() and (d / "TEST.md").is_file()
+               and d.name not in SKILL_SCRIPTS]
+    assert not orphans, (
+        f"verification dirs with a TEST.md but no matching skill: {orphans}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(SKILL_SCRIPTS))
+def test_verification_protocol_is_substantive(name):
+    """Guard against a protocol being emptied out rather than maintained.
+
+    The thresholds are low on purpose: this catches a stub or a deletion,
+    not a protocol someone has legitimately shortened.
+    """
+    text = (VERIFICATION / name / "TEST.md").read_text(encoding="utf-8")
+    assert text.startswith(f"# TEST.md — {name.replace('_', '-')}\n"), \
+        f"{name}/TEST.md does not open with its own skill name"
+    assert "**Measured" in text or "**measured**" in text, \
+        f"{name}/TEST.md does not claim any measured values"
+    assert text.count("## T") >= 5, \
+        f"{name}/TEST.md has fewer than 5 cases"
+    assert "## Results" in text, f"{name}/TEST.md has no results table"
+    assert "Not shipped with the skill." in text, \
+        f"{name}/TEST.md does not say it is not shipped"
+
+
+# ---------------------------------------------------------------------------
+# Question indexes
+#
+# A naive user asks a question, not a subcommand. Each skill therefore ships
+# a references/questions.md mapping questions to commands. It lives in
+# references/ rather than in SKILL.md because a SKILL.md is loaded on every
+# trigger, while an index is read only when a question calls for it.
+# ---------------------------------------------------------------------------
+
+#: Questions a skill's index must plausibly cover. Low on purpose: this
+#: catches a stub or a deletion, not an index someone has reorganised.
+MIN_QUESTIONS = 15
+
+
+@pytest.mark.parametrize("skill", sorted(SKILL_SCRIPTS))
+def test_every_skill_has_a_question_index(skill):
+    assert (SKILLS / skill / "references" / "questions.md").is_file(), \
+        f"{skill} has no references/questions.md"
+
+
+@pytest.mark.parametrize("skill", sorted(SKILL_SCRIPTS))
+def test_skill_md_points_at_its_question_index(skill):
+    """An index nothing links to will not be read."""
+    text = (SKILLS / skill / "SKILL.md").read_text(encoding="utf-8")
+    assert "references/questions.md" in text, \
+        f"{skill}/SKILL.md does not link to its question index"
+
+
+@pytest.mark.parametrize("skill", sorted(SKILL_SCRIPTS))
+def test_question_index_is_substantive(skill):
+    path = SKILLS / skill / "references" / "questions.md"
+    text = path.read_text(encoding="utf-8")
+    questions = re.findall(r"^\*\*Q\d+\.", text, re.MULTILINE)
+    assert len(questions) >= MIN_QUESTIONS, (
+        f"{skill} index has {len(questions)} questions, "
+        f"fewer than {MIN_QUESTIONS}"
+    )
+    assert "## Start here" in text, f"{skill} index has no entry table"
+    assert "## References" in text, f"{skill} index cites nothing"
+
+
+@pytest.mark.parametrize("skill", sorted(SKILL_SCRIPTS))
+def test_reference_documents_link_only_to_files_that_exist(skill):
+    """Same rule as SKILL.md, applied to every reference document.
+
+    These files link sideways to each other and across skills, which is
+    exactly the kind of link that rots silently.
+    """
+    directory = SKILLS / skill / "references"
+    missing = []
+    for path in sorted(directory.glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for target in re.findall(r"\]\(((?!https?:)[^)#]+)\)", text):
+            resolved = (path.parent / target).resolve()
+            # A link may point at a directory, e.g. ../examples/.
+            if not resolved.is_file() and not resolved.is_dir():
+                missing.append(f"{path.name} -> {target}")
+    assert not missing, f"{skill} reference links are broken: {missing}"
+
+
+@pytest.mark.parametrize("skill", sorted(SKILL_SCRIPTS))
+def test_citation_bib_is_well_formed(skill):
+    """A malformed entry breaks every downstream bibliography."""
+    text = (SKILLS / skill / "references" / "citation.bib").read_text(
+        encoding="utf-8")
+    keys = re.findall(r"^@[A-Za-z]+\{([^,]+)", text, re.MULTILINE)
+    assert keys, f"{skill} citation.bib has no entries"
+    assert text.count("{") == text.count("}"), \
+        f"{skill} citation.bib has unbalanced braces"
+    duplicates = sorted({k for k in keys if keys.count(k) > 1})
+    assert not duplicates, f"{skill} citation.bib repeats keys: {duplicates}"
+
+
+# ---------------------------------------------------------------------------
+# Organism neutrality
+#
+# These are general-purpose computational drug discovery skills. Worked
+# examples that all came from one organism would read as a limitation that
+# does not exist in the code.
+# ---------------------------------------------------------------------------
+
+#: Organisms the target-preparation examples must span, each verified by
+#: running prepare-receptor against the cited PDB entry.
+EXPECTED_ORGANISM_TERMS = (
+    "Homo sapiens",      # human
+    "HIV-1",             # virus
+    "SARS-CoV-2",        # virus
+    "tuberculosis",      # bacterium
+    "albicans",          # fungus
+    "falciparum",        # protozoan
+    "botulinum",         # bacterium, apo
+)
+
+
+def test_examples_span_more_than_one_organism():
+    text = (SKILLS / "target_preparation" / "references"
+            / "questions.md").read_text(encoding="utf-8")
+    missing = [t for t in EXPECTED_ORGANISM_TERMS if t not in text]
+    assert not missing, (
+        "the worked-example table no longer spans these organisms: "
+        f"{missing}. These skills are organism-agnostic and the examples "
+        "should show it."
+    )
+
+
+def _code_without_prose(path: Path) -> str:
+    """Return *path*'s source with comments and docstrings removed.
+
+    Organism names are welcome in prose - the COFACTORS set in
+    ``targets/site.py`` explains itself with a worked example from PDB 6HEZ,
+    and that comment is the reason the set is trustworthy. What would be a
+    problem is organism-specific *logic*, so only code is searched.
+    """
+    import io as _io
+    import tokenize
+
+    kept: list[str] = []
+    previous = tokenize.NEWLINE
+    with tokenize.open(path) as handle:
+        source = handle.read()
+    for token in tokenize.generate_tokens(_io.StringIO(source).readline):
+        if token.type == tokenize.COMMENT:
+            continue
+        if token.type == tokenize.STRING and previous in (
+                tokenize.NEWLINE, tokenize.NL, tokenize.INDENT,
+                tokenize.DEDENT, tokenize.ENCODING):
+            # A string that begins a statement is a docstring.
+            continue
+        if token.type not in (tokenize.NL, tokenize.NEWLINE,
+                              tokenize.INDENT, tokenize.DEDENT):
+            kept.append(token.string)
+        if token.type not in (tokenize.COMMENT,):
+            previous = token.type
+    return " ".join(kept)
+
+
+def test_no_organism_is_hardcoded_in_the_package():
+    """Organism names belong in prose, or in a profile that is about one.
+
+    An organism name reached by executable code would mean a
+    general-purpose skill had quietly specialised. Comments, docstrings and
+    the anti-tb scoring profile's own rationale are all fine.
+    """
+    allowed = {
+        # This profile is explicitly about one organism's property space,
+        # and names it in its rationale and its caveat. That is the point.
+        Path("src/agskills/reinvent/scoring.py"),
+    }
+    offenders = []
+    for path in sorted((ROOT / "src").rglob("*.py")):
+        relative = Path(*path.relative_to(ROOT).parts)
+        if relative in allowed:
+            continue
+        code = _code_without_prose(path)
+        for term in ("Mycobacterium", "falciparum", "albicans", "cerevisiae",
+                     "tuberculosis"):
+            if term in code:
+                offenders.append(f"{relative.as_posix()}: {term}")
+    assert not offenders, (
+        f"organism names in executable code: {offenders}. Keep these in "
+        "comments, docstrings, or a profile whose subject they are."
+    )

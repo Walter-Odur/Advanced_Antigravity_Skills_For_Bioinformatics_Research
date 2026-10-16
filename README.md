@@ -15,6 +15,18 @@ Each skill's `SKILL.md` lives under `.agents/skills/<folder>/` and is the
 reference for using it. The science lives in one package, `agskills`, under
 `src/`.
 
+**Not sure where to start?** Each skill ships a question index —
+`references/questions.md` — that maps the questions a newcomer actually asks
+("I only know my target's name", "aspirin fails the filter, is it broken?",
+"my docking scores are all the same") onto the command that answers them.
+106 questions across the five skills, each answer measured rather than
+asserted.
+
+The skills are **organism-agnostic**: nothing in the code knows or cares
+which organism a structure came from. The worked examples span human, viral,
+bacterial, fungal and protozoan targets to make that concrete, and a test
+keeps it that way.
+
 Packaging follows the [Google DeepMind science-skills](https://github.com/google-deepmind/science-skills)
 bundle: `snake_case` folders with a `kebab-case` YAML `name:`, `scripts/`
 and `references/` beside each `SKILL.md`, `citation.bib` per skill, and
@@ -162,10 +174,12 @@ tokens on every use. Three measures keep that bounded:
 -   **`--detail compact` is the default.** It carries verdicts, headline
     numbers and the reasons behind them. `--detail full` adds every
     individual check, parameter and descriptor. Measured on a 50-compound
-    strict screen, full output is roughly 1,400 tokens per compound and
-    compact is about 115 - a 92% saving for information rarely needed.
+    strict screen: 8,346 bytes per compound at `full` against 637 at
+    `compact`, so roughly 2,090 tokens per compound against 160 - a 92%
+    saving on information that is rarely read.
 -   **Results go to a file; stdout stays short.** A 300-compound screen
-    prints under 60 lines whatever its size. Read fields from the file with
+    prints 15 lines, the same as a 50-compound one; the console summary does
+    not grow with the input. Read fields from the file with
     `jq` or a short Python expression rather than printing it whole.
 -   **Depth lives in `references/`**, read only on demand, so each
     `SKILL.md` stays near 2,000 tokens.
@@ -210,6 +224,8 @@ src/agskills/               the shared implementation
 tests/                      the test suite and its real data fixtures.
                             Not shipped: tests confirm the skills work,
                             they are not part of them
+verification/<skill>/TEST.md a hand-written verification protocol per skill.
+                            Also not shipped
 tools/                      generators for documentation derived from code
 ```
 
@@ -233,6 +249,47 @@ experimental structures from the PDB, a real AlphaFold model, independently
 computed reference properties for ten marketed drugs, a REINVENT output
 CSV in the real column format, and authentic AutoDock Vina output. See
 `tests/conftest.py` for what each fixture is and why.
+
+### Question indexes
+
+| Index | Questions | Covers |
+|---|---:|---|
+| [target_preparation](.agents/skills/target_preparation/references/questions.md) | 23 | structures, binding sites, cleaning choices, predicted models |
+| [compound_screening](.agents/skills/compound_screening/references/questions.md) | 25 | libraries, pChEMBL, tiers, alerts, docking scores |
+| [compound_synthesis](.agents/skills/compound_synthesis/references/questions.md) | 21 | generators, transforms, mode collapse, reading results |
+| [md_simulation](.agents/skills/md_simulation/references/questions.md) | 20 | force fields, the four stages, walltime, post-run checks |
+| [drug_discovery_wizard](.agents/skills/drug_discovery_wizard/references/questions.md) | 17 | stage selection, delegation, what to distrust |
+
+`target_preparation` also ships
+[best_practices.md](.agents/skills/target_preparation/references/best_practices.md):
+resolution and R-free, which structure to choose, waters and metals,
+oligomeric state and interface sites, protonation and amide flips, box size,
+and the documented limits of predicted models — 23 cited references.
+
+In total the bundle carries **171 citation entries**, every one with a DOI
+resolved through Crossref and checked against the registered title, journal,
+volume and pages.
+
+### Verification protocols
+
+Each skill also has a readable protocol under `verification/`:
+
+| Protocol | Covers |
+|---|---|
+| [target_preparation/TEST.md](verification/target_preparation/TEST.md) | 14 cases: fetch, clean, PDBQT, three B-factor scales, binding sites, exit codes |
+| [compound_screening/TEST.md](verification/compound_screening/TEST.md) | 13 cases: descriptors against PubChem, tier semantics, alerts, ChEMBL, ZINC, output size |
+| [compound_synthesis/TEST.md](verification/compound_synthesis/TEST.md) | 12 cases: TOML schema, transform directions, de-duplication, mode collapse |
+| [md_simulation/TEST.md](verification/md_simulation/TEST.md) | 11 cases: force-field-specific non-bonded settings, staging, MDP validation, `-maxh` |
+| [drug_discovery_wizard/TEST.md](verification/drug_discovery_wizard/TEST.md) | 9 cases: per-stage readiness, delegation, deferral, relocatable artefacts |
+
+Every expected value in them was measured by running the command, including
+the places where the skill *should* disagree with an outside reference —
+Crippen logP against PubChem's XLogP3, for instance. Work through one to
+satisfy yourself a skill is correct on your machine; read one to see what a
+correct result looks like.
+
+They are not shipped inside `.agents/skills/`, and a test asserts both that
+every skill has one and that none leaks into the bundle.
 
 ## Regenerating derived documentation
 
