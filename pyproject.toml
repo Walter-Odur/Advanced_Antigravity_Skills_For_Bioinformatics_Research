@@ -18,16 +18,26 @@ keywords = ["drug-discovery", "cheminformatics", "docking", "admet", "molecular-
 dependencies = [
     "rdkit>=2023.9",
     "biopython>=1.81",
+    # agskills.http is a thin adapter over this, and imports it
+    # unconditionally. Every skill launcher declares it in its PEP 723
+    # header too, so 'uv run' works without the package installed; this
+    # entry is what makes 'pip install -e .' produce a working install.
+    "polite-http>=0.1",
 ]
 
 [project.optional-dependencies]
 # Ligand/receptor PDBQT preparation for AutoDock Vina.
-docking = ["meeko>=0.5", "scipy>=1.10", "numpy>=1.24"]
+#
+# gemmi is listed explicitly because meeko imports it at package import
+# time (meeko.polymer -> meeko.chemtempgen -> import gemmi). Installing
+# meeko without it yields a meeko that cannot be imported at all, which
+# silently downgrades receptor preparation to Open Babel.
+docking = ["meeko>=0.5", "scipy>=1.10", "numpy>=1.24", "gemmi>=0.6"]
 # Tabular analysis of REINVENT output.
 analysis = ["pandas>=2.0", "numpy>=1.24"]
 test = ["pytest>=7.4", "pytest-cov>=4.1"]
 all = [
-    "meeko>=0.5", "scipy>=1.10", "numpy>=1.24",
+    "meeko>=0.5", "scipy>=1.10", "numpy>=1.24", "gemmi>=0.6",
     "pandas>=2.0", "pytest>=7.4", "pytest-cov>=4.1",
 ]
 
