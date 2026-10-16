@@ -66,45 +66,69 @@ class ConversionResult:
         return asdict(self)
 
 
-def find_executable(name: str) -> str | None:
-    """Locate an executable, including inside the running interpreter's env.
+def find_executable(name: str, *, interpreter_coupled: bool = True) -> str | None:
+    """Locate an executable, preferring the running interpreter's own copy.
 
-    ``shutil.which`` consults ``PATH`` only. A console script installed into
-    a virtual environment lives next to ``sys.executable`` (in ``Scripts``
-    on Windows, ``bin`` on POSIX) and is frequently absent from ``PATH`` -
-    for instance when the interpreter was invoked by its full path, which
-    is how most tooling runs it.
+    ``shutil.which`` consults ``PATH`` only, which is wrong in both
+    directions for a Python console script:
+
+    * A script installed into a virtual environment lives next to
+      ``sys.executable`` (in ``Scripts`` on Windows, ``bin`` on POSIX) and
+      is frequently absent from ``PATH`` - for instance when the
+      interpreter was invoked by its full path, which is how most tooling
+      runs it.
+    * Worse, ``PATH`` may hold a *different* environment's copy. A console
+      script is coupled to the interpreter it was installed for: it reads
+      that interpreter's site-packages. Observed here, `mk_prepare_receptor`
+      resolved through ``PATH`` to a conda installation whose Meeko had no
+      RDKit, so receptor preparation failed and silently fell back to a
+      lower-quality converter while a working Meeko sat in the active
+      environment.
+
+    So for an interpreter-coupled script the environment's own directories
+    are searched first, and ``PATH`` is the fallback. Pass
+    ``interpreter_coupled=False`` for a genuine system binary such as
+    ``obabel``, where ``PATH`` is the right answer.
     """
-    found = shutil.which(name)
-    if found:
-        return found
-    candidates = [Path(sys.executable).parent]
     base = Path(sys.prefix)
-    candidates += [base / "Scripts", base / "bin"]
+    candidates = [Path(sys.executable).parent, base / "Scripts", base / "bin"]
+
+    if not interpreter_coupled:
+        found = shutil.which(name)
+        if found:
+            return found
     suffixes = (".exe", ".bat", ".cmd", "") if os.name == "nt" else ("",)
     for directory in candidates:
         for suffix in suffixes:
             candidate = directory / f"{name}{suffix}"
             if candidate.is_file():
                 return str(candidate)
-    return None
+    # Not in this environment: fall back to PATH.
+    return shutil.which(name) if interpreter_coupled else None
 
 
 def available_converters() -> list[str]:
-    """Which PDBQT converters this machine can actually use."""
+    """Which PDBQT converters this machine can actually use.
+
+    A Meeko console script found on ``PATH`` but belonging to another
+    environment is not usable, so Meeko is only reported when the package
+    imports here as well.
+    """
     found: list[str] = []
-    if find_executable("mk_prepare_receptor"):
-        found.append("meeko")
-    else:
-        try:
-            import meeko  # noqa: F401,PLC0415
-            found.append("meeko-python")
-        except Exception:
-            pass
-    if find_executable("obabel"):
+    try:
+        import meeko  # noqa: F401,PLC0415
+        meeko_importable = True
+    except Exception:
+        meeko_importable = False
+
+    if meeko_importable:
+        found.append("meeko" if find_executable("mk_prepare_receptor")
+                     else "meeko-python")
+    if find_executable("obabel", interpreter_coupled=False):
         found.append("obabel")
-    if find_executable("prepare_receptor") or \
-            find_executable("prepare_receptor4.py"):
+    if find_executable("prepare_receptor", interpreter_coupled=False) or \
+            find_executable("prepare_receptor4.py",
+                            interpreter_coupled=False):
         found.append("adfr")
     return found
 
@@ -266,7 +290,7 @@ def receptor_to_pdbqt(pdb_path: str | Path,
             warnings.append(f"mk_prepare_receptor failed: {exc}")
 
     # --- Open Babel -------------------------------------------------------
-    obabel = find_executable("obabel")
+    obabel = find_executable("obabel", interpreter_coupled=False)
     if obabel:
         try:
             proc = _run([obabel, str(source), "-O", str(destination),
@@ -290,8 +314,9 @@ def receptor_to_pdbqt(pdb_path: str | Path,
             warnings.append(f"obabel failed: {exc}")
 
     # --- ADFR Suite -------------------------------------------------------
-    adfr = (find_executable("prepare_receptor")
-            or find_executable("prepare_receptor4.py"))
+    adfr = (find_executable("prepare_receptor", interpreter_coupled=False)
+            or find_executable("prepare_receptor4.py",
+                               interpreter_coupled=False))
     if adfr:
         try:
             proc = _run([adfr, "-r", str(source), "-o", str(destination)])

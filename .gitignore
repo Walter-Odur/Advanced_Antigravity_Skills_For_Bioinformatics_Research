@@ -66,3 +66,6 @@ wizard_tests/
 
 # Antigravity system files
 .gemini/
+
+# Licence acknowledgements written by the skills at run time
+.licenses/

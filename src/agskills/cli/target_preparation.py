@@ -23,6 +23,7 @@ from ._common import (
     add_output,
     build_root_parser,
     emit_json,
+    emit_slurm_script,
     emit_text,
     run_cli,
 )
@@ -40,6 +41,40 @@ Typical sequence:
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
+
+
+def _interface_site_warning(reference: str,
+                            chains_kept: list[str]) -> str | None:
+    """Warn when the site ligand sat in a chain that cleaning removed.
+
+    A ligand bound at a subunit interface is labelled with one chain, but
+    the pocket is formed by several. Keeping a single chain then leaves the
+    box correctly placed over half a site, and docking into it gives
+    affinities for a pocket that does not exist in the receptor file.
+
+    PDB 1HSG is the standard example: HIV-1 protease is an obligate
+    homodimer whose catalytic Asp25 and flaps come from both monomers, and
+    the inhibitor is recorded as chain B. ``--chain A`` keeps 757 atoms and
+    leaves 115 of them inside a box centred on a ligand that is no longer
+    there.
+    """
+    # Reference looks like "MK1:B:902".
+    parts = reference.split(":")
+    if len(parts) < 2:
+        return None
+    ligand_chain = parts[1].strip()
+    kept = {c.strip() for c in chains_kept}
+    if not ligand_chain or ligand_chain in kept:
+        return None
+    return (
+        f"The site was defined from {reference}, but chain "
+        f"{ligand_chain} is not in the cleaned receptor "
+        f"(kept: {', '.join(sorted(kept)) or 'none'}). The box is in the "
+        "right place, yet part of the pocket has been removed with that "
+        "chain. If the site lies at a subunit interface - as it does in an "
+        "obligate dimer such as HIV-1 protease - re-run without --chain, "
+        "or keep every chain that contributes to the pocket."
+    )
 
 
 def cmd_prepare_receptor(args: argparse.Namespace) -> None:
@@ -97,6 +132,10 @@ def cmd_prepare_receptor(args: argparse.Namespace) -> None:
             result["steps"].append(
                 f"binding site defined from {site.reference}"
             )
+            warning = _interface_site_warning(site.reference,
+                                              clean.chains_kept)
+            if warning:
+                result["binding_site_warning"] = warning
         except Exception as exc:  # non-fatal: the receptor is still usable
             result["binding_site_error"] = str(exc)
 
@@ -136,6 +175,8 @@ def cmd_prepare_receptor(args: argparse.Namespace) -> None:
         f"  confidence verdict: {quality.verdict}",
         f"  bound ligands: {len(ligands)}"
         + (f"; site from {site.reference}" if site else ""),
+        *([f"  site warning: {result['binding_site_warning']}"]
+          if result.get("binding_site_warning") else []),
         f"  next: {result['next_step']}",
     ])
 
@@ -255,16 +296,12 @@ def cmd_generate_af2_script(args: argparse.Namespace) -> None:
         conda_env=args.conda_env, partition=args.partition,
         account=args.account,
     )
-    script = generate_slurm_script(
-        args.method, resources,
-        {"fasta": args.fasta, "db_path": args.db_path,
-         "out_dir": args.out_dir},
-    )
-    emit_text(script, args, executable=True, summary=[
+    emit_slurm_script(args.method, resources, args, summary=[
         f"{args.method} submission script for {args.fasta}",
         f"  resources: {args.ngpu}x{args.gpu}, {args.mem}, {args.time}",
-        f"  submit with: sbatch {args.output}",
-    ])
+        f"  submit with: sbatch {Path(args.output).name}",
+    ], settings={"fasta": args.fasta, "db_path": args.db_path,
+                 "out_dir": args.out_dir})
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +410,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mem", default="64G")
     p.add_argument("--time", default="12:00:00")
     p.add_argument("--conda-env", default="colabfold")
+    p.add_argument("--module", action="append", dest="module_loads",
+                   metavar="NAME", default=[],
+                   help="A module to 'module load' inside the job, e.g. "
+                        "--module gromacs/2024.2. Repeatable. Always prefer "
+                        "the cluster's own module over a user-space "
+                        "install; run 'module avail' to see the names.")
     p.add_argument("--partition")
     p.add_argument("--account")
     add_output(p, help_text="Output .sh script.")

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..errors import InvalidInputError, MissingDependencyError
-from ..io_utils import ensure_parent, require_file
+from ..io_utils import ensure_parent, require_file, write_text
 
 __all__ = [
     "CleanReport",
@@ -89,6 +89,66 @@ def _biopython():
                     "dependencies declared in the script's PEP 723 header, "
                     "or install it directly with 'pip install biopython'",
         ) from exc
+
+
+#: Header records carried from the source into the cleaned file. Between
+#: them these say what the structure *is*, which cannot be recovered from
+#: coordinates alone.
+#:
+#: ``EXPDTA`` and ``REMARK   2 RESOLUTION`` mark an experimental structure;
+#: ``TITLE`` is where the AlphaFold DB and ESMFold announce a prediction.
+#: Without them :func:`agskills.targets.quality.detect_scale` has only
+#: magnitude to go on, and a well-refined crystal structure (mean B-factor
+#: 20-50 A^2) is indistinguishable from a poor predicted model (mean pLDDT
+#: 20-50) - the case that made a 2.0 A structure of HIV-1 protease report
+#: "not reliable enough for docking".
+#:
+#: ``CRYST1`` is kept because downstream tools read it: GROMACS ``pdb2gmx``
+#: and ``editconf`` both use the unit cell when one is present.
+_PROVENANCE_RECORDS = (
+    "HEADER",
+    "TITLE ",
+    "EXPDTA",
+    "CRYST1",
+    "REMARK   2",
+)
+
+#: Ceiling on carried header lines, so a pathological entry cannot bloat
+#: the cleaned file. The records above run to a handful of lines normally.
+_MAX_PROVENANCE_LINES = 40
+
+
+def _carry_provenance(source: Path, destination: Path) -> None:
+    """Prepend the source's provenance records to a cleaned PDB.
+
+    ``PDBIO.save`` writes coordinates only, so the cleaned file would
+    otherwise be anonymous. See :data:`_PROVENANCE_RECORDS` for why that
+    matters.
+    """
+    carried: list[str] = []
+    for line in source.read_text(encoding="utf-8",
+                                 errors="replace").splitlines():
+        if line.startswith(("ATOM", "HETATM", "MODEL")):
+            break
+        if line.startswith(_PROVENANCE_RECORDS):
+            carried.append(line.rstrip())
+            if len(carried) >= _MAX_PROVENANCE_LINES:
+                break
+    if not carried:
+        return
+
+    # The PDB format fixes the order of these records, and every REMARK
+    # belongs before CRYST1. Appending the cleaning note to the end would
+    # put it after the unit cell, which is a malformed file even though
+    # tolerant parsers accept it.
+    note = ("REMARK 500 CLEANED BY AGSKILLS: SOLVENT AND NON-BIOLOGICAL "
+            "HETEROGENS REMOVED")
+    insert_at = next((i for i, line in enumerate(carried)
+                      if line.startswith("CRYST1")), len(carried))
+    carried.insert(insert_at, note)
+
+    body = destination.read_text(encoding="utf-8", errors="replace")
+    write_text("\n".join(carried) + "\n" + body, destination)
 
 
 def clean_structure(
@@ -220,6 +280,7 @@ def clean_structure(
     io.set_structure(structure)
     selector = _Cleaner()
     io.save(str(destination), selector)
+    _carry_provenance(source, destination)
 
     def _unpack(counter: dict[str, int]) -> list[dict[str, Any]]:
         out = []

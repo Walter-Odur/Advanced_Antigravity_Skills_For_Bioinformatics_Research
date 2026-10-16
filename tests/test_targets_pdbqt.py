@@ -176,7 +176,7 @@ def test_no_converter_reports_advice_rather_than_succeeding(tmp_path,
     PDBQT file.
     """
     monkeypatch.setattr("agskills.targets.pdbqt.find_executable",
-                        lambda name: None)
+                        lambda name, **kw: None)
     source = tmp_path / "receptor.pdb"
     source.write_text(
         "ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00 20.00"
@@ -201,7 +201,7 @@ def test_a_successful_conversion_is_reported_with_its_converter(tmp_path,
 
     monkeypatch.setattr(
         "agskills.targets.pdbqt.find_executable",
-        lambda name: "/fake/mk_prepare_receptor"
+        lambda name, **kw: "/fake/mk_prepare_receptor"
         if name == "mk_prepare_receptor" else None)
 
     class _Completed:
@@ -235,7 +235,7 @@ def test_a_template_failure_triggers_a_reported_permissive_retry(tmp_path,
 
     monkeypatch.setattr(
         "agskills.targets.pdbqt.find_executable",
-        lambda name: "/fake/mk_prepare_receptor"
+        lambda name, **kw: "/fake/mk_prepare_receptor"
         if name == "mk_prepare_receptor" else None)
 
     attempts: list[list[str]] = []
@@ -279,7 +279,7 @@ def test_permissive_retry_can_be_refused(tmp_path, monkeypatch):
 
     monkeypatch.setattr(
         "agskills.targets.pdbqt.find_executable",
-        lambda name: "/fake/mk_prepare_receptor"
+        lambda name, **kw: "/fake/mk_prepare_receptor"
         if name == "mk_prepare_receptor" else None)
 
     class _Completed:

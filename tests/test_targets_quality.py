@@ -257,18 +257,111 @@ def test_high_confidence_model_proceeds(tmp_path):
     assert report.residues_very_high == 100
 
 
-def test_very_low_confidence_model_is_stopped(tmp_path):
-    lines = [
+def _synthetic_pdb(path, value, *, header=()):
+    """Write a CA-only PDB with a constant B-factor column.
+
+    *header* records matter: a value of 25 in that column means "very low
+    pLDDT" in a predicted model and "nicely ordered" in a crystal
+    structure, and only the header says which file this is.
+    """
+    lines = list(header) + [
         f"ATOM  {i:5d}  CA  ALA A{i:4d}       0.000   0.000   0.000  1.00 "
-        f"{25.0:6.2f}           C"
+        f"{value:6.2f}           C"
         for i in range(1, 101)
     ]
-    pdb = tmp_path / "bad.pdb"
-    pdb.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+#: What the AlphaFold Database writes. Its presence is what makes the
+#: B-factor column pLDDT rather than a displacement parameter.
+_PREDICTED_HEADER = (
+    "HEADER                                            01-AUG-25",
+    "TITLE     ALPHAFOLD MONOMER V2.0 PREDICTION FOR TEST PROTEIN (P00000)",
+)
+
+#: What a wwPDB X-ray entry writes.
+_CRYSTAL_HEADER = (
+    "HEADER    HYDROLASE                               31-MAR-95   TEST",
+    "EXPDTA    X-RAY DIFFRACTION",
+    "REMARK   2 RESOLUTION.    2.00 ANGSTROMS.",
+)
+
+
+def test_very_low_confidence_model_is_stopped(tmp_path):
+    """A predicted model that says so, and is bad, must be stopped."""
+    pdb = _synthetic_pdb(tmp_path / "bad.pdb", 25.0, header=_PREDICTED_HEADER)
     report = assess_structure(pdb)
+    assert report.scale == "plddt_0_100"
     assert report.verdict == "STOP"
     assert any("AlphaFold2" in a or "colabfold" in a for a in report.actions)
     assert any("ligand-based" in a for a in report.actions)
+
+
+def test_well_ordered_crystal_structure_is_not_called_unreliable(tmp_path):
+    """A low B-factor is *good*, and must never read as a low pLDDT.
+
+    Regression test. Scale detection used to be decided by magnitude alone:
+    any file whose B-factors stayed under 100 with a mean above 20 was taken
+    for a predicted model. That describes most well-refined crystal
+    structures - measured means are 1HSG 29.3, 4EY7 31.2, 6LU7 40.9,
+    2HYY 42.2, none with a value above 100 - so a 2.0 A structure of HIV-1
+    protease was reported as "not reliable enough for docking". The better
+    the crystallography, the lower the B-factors, and the more confidently
+    the structure was rejected.
+    """
+    pdb = _synthetic_pdb(tmp_path / "xray.pdb", 29.0, header=_CRYSTAL_HEADER)
+    report = assess_structure(pdb)
+    assert report.scale == "bfactor"
+    assert report.verdict == "NOT_APPLICABLE"
+    assert not any("STOP" in str(a) for a in report.actions)
+
+
+def test_header_outranks_magnitude_in_both_directions(tmp_path):
+    """The same number, read two ways, according to the header."""
+    predicted = _synthetic_pdb(tmp_path / "p.pdb", 35.0,
+                               header=_PREDICTED_HEADER)
+    crystal = _synthetic_pdb(tmp_path / "c.pdb", 35.0,
+                             header=_CRYSTAL_HEADER)
+    assert assess_structure(predicted).scale == "plddt_0_100"
+    assert assess_structure(crystal).scale == "bfactor"
+    # 35 is a poor pLDDT but an ordinary B-factor, so the verdicts differ.
+    assert assess_structure(predicted).verdict == "STOP"
+    assert assess_structure(crystal).verdict == "NOT_APPLICABLE"
+
+
+def test_headerless_file_declines_rather_than_rejecting(tmp_path):
+    """With no provenance, values in the overlap band are read as B-factors.
+
+    A file stripped to bare coordinates is genuinely ambiguous at a mean of
+    20-50. Reporting NOT_APPLICABLE asks the user which it is; reporting
+    STOP would throw away good structures, which is the more damaging of
+    the two errors.
+    """
+    pdb = _synthetic_pdb(tmp_path / "bare.pdb", 30.0)
+    report = assess_structure(pdb)
+    assert report.scale == "bfactor"
+    assert report.verdict == "NOT_APPLICABLE"
+
+
+def test_headerless_confident_model_is_still_read_as_plddt(tmp_path):
+    """A headerless file only reads as pLDDT when it would actually pass."""
+    pdb = _synthetic_pdb(tmp_path / "bare_good.pdb", 88.0)
+    report = assess_structure(pdb)
+    assert report.scale == "plddt_0_100"
+    assert report.verdict == "PROCEED"
+
+
+def test_provenance_classifies_the_real_fixtures(
+        pdb_1m17, pdb_6hez, alphafold_model):
+    """Against real files, not synthetic ones."""
+    from agskills.targets.quality import provenance
+
+    assert provenance(pdb_1m17.read_text(errors="replace")) == "experimental"
+    assert provenance(pdb_6hez.read_text(errors="replace")) == "experimental"
+    assert provenance(
+        alphafold_model.read_text(errors="replace")) == "predicted"
+    assert provenance("ATOM      1  CA  ALA A   1\n") is None
 
 
 def test_mixed_confidence_model_is_refined(tmp_path):
@@ -377,3 +470,64 @@ def test_low_complexity_protein_is_not_misread_as_fractional(tmp_path):
     path = _write_pdb(tmp_path, [8.0, 9.5, 11.2, 7.8, 10.1, 12.4])
     assert detect_scale(extract_plddt(path.read_text(encoding="utf-8"))) == \
         "bfactor"
+
+
+def test_interface_site_warning_fires_only_when_a_chain_was_dropped():
+    """A site ligand in a removed chain means half a pocket.
+
+    PDB 1HSG is the standard case: HIV-1 protease is an obligate homodimer
+    whose active site is built from both monomers, and the inhibitor is
+    recorded as chain B. Keeping only chain A leaves the box correctly
+    placed over a pocket that is no longer all there.
+    """
+    from agskills.cli.target_preparation import _interface_site_warning
+
+    warning = _interface_site_warning("MK1:B:902", ["A"])
+    assert warning is not None
+    assert "chain B is not in the cleaned receptor" in warning
+    assert "--chain" in warning
+
+    # The ligand's own chain was kept: nothing to say.
+    assert _interface_site_warning("AQ4:A:999", ["A"]) is None
+    # Every chain kept.
+    assert _interface_site_warning("MK1:B:902", ["A", "B"]) is None
+    # Unparseable reference: stay quiet rather than guess.
+    assert _interface_site_warning("whole_structure", ["A"]) is None
+
+
+def test_cleaned_file_keeps_pdb_record_order(tmp_path, pdb_1m17):
+    """Carried provenance must not break the format's fixed record order.
+
+    The PDB specification orders these records, and every REMARK belongs
+    before CRYST1. Appending the cleaning note to the end of the carried
+    block put it after the unit cell - malformed, though tolerant parsers
+    accept it.
+    """
+    from agskills.targets.clean import clean_structure
+
+    out = tmp_path / "clean.pdb"
+    clean_structure(pdb_1m17, out)
+    order = {}
+    for index, line in enumerate(out.read_text(errors="replace").splitlines()):
+        for record in ("HEADER", "TITLE", "EXPDTA", "REMARK", "CRYST1",
+                       "ATOM"):
+            if line.startswith(record):
+                order.setdefault(record, index)
+
+    assert "REMARK" in order, "the cleaning note was not written"
+    if "CRYST1" in order:
+        assert order["REMARK"] < order["CRYST1"], \
+            "a REMARK record follows CRYST1"
+    last_header = max(v for k, v in order.items() if k != "ATOM")
+    assert last_header < order["ATOM"], "a header record follows the atoms"
+
+
+def test_cleaning_note_is_recorded(tmp_path, pdb_1m17):
+    """The cleaned file should say that it was cleaned."""
+    from agskills.targets.clean import clean_structure
+
+    out = tmp_path / "clean.pdb"
+    clean_structure(pdb_1m17, out)
+    text = out.read_text(errors="replace")
+    assert "CLEANED BY AGSKILLS" in text
+    assert "EXPDTA" in text, "provenance was not carried"
