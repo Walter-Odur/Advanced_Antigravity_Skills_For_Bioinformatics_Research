@@ -80,9 +80,18 @@ Then:
 bash md_workflow/setup_md.sh      # topology, box, solvate, EM, NVT, NPT
 uv run scripts/md_simulation_api.py generate-hpc-script \
     --job-type gromacs-md --ngpu 4 --mem 128G --time 48:00:00 \
+    --module gromacs/2024.2 \
     --output md_workflow/submit_md.sh
 sbatch md_workflow/submit_md.sh   # production
 ```
+
+Each call writes **one script plus one guide** — `submit_md.sh` and
+`submit_md_SUBMIT.md`. Point the user at the guide rather than explaining
+the cluster yourself: it lists the required tools with probe and install
+commands, the files to stage, the `sbatch`/`squeue`/`sacct` commands, and
+what each failure message means. Pass `--module NAME` (repeatable) so the
+job loads the cluster's own build; without it the script says so, because a
+module loaded on a login node does not carry into the job.
 
 > [!IMPORTANT] **Non-bonded settings belong to the force field.** Each was
 > parameterised with a particular treatment of the Lennard-Jones tail; it is
@@ -174,6 +183,7 @@ names before submitting.
 
 ## Reference
 
+-   [references/questions.md](references/questions.md) — **read this first when the user's request is vague, phrased as a question, or mentions a target, organism or compound class not covered above.** Indexed by question: force-field choice, the four stages, walltime and checkpointing, and what to check afterwards.
 -   [references/mdp_validation.md](references/mdp_validation.md) — every
     check, the protocol stage by stage, and the force-field table.
 -   [references/citation.bib](references/citation.bib) — cite these for any

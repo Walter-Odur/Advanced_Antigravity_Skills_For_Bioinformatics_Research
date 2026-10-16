@@ -223,6 +223,7 @@ service.
 
 ## Reference
 
+-   [references/questions.md](references/questions.md) — **read this first when the user's request is vague, phrased as a question, or mentions a target, organism or compound class not covered above.** Indexed by question: library choice, pChEMBL thresholds, which tier to believe, what a docking score means.
 -   [references/admet_thresholds.md](references/admet_thresholds.md) —
     generated from the check registry, so it cannot drift.
 -   [references/citation.bib](references/citation.bib) — cite these for any

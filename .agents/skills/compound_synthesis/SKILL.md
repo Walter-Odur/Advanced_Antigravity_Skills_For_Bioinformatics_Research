@@ -177,6 +177,8 @@ uv run scripts/compound_synthesis_api.py generate-hpc-script \
 # sbatch submit.sh
 ```
 
+One script plus one guide (`submit_SUBMIT.md`): the tools the cluster needs with probe and install commands, files to stage, the `sbatch`/`squeue`/`sacct` commands, and what each failure means. Point the user at it. `--module NAME` is repeatable and makes the job load the cluster's own build.
+
 `run` performs preflight first: the TOML parses, every referenced file
 exists, and the device is available. A missing prior is reported in seconds
 rather than after minutes of startup.
@@ -223,6 +225,7 @@ Three diagnostics matter more than the ranking:
 
 ## Reference
 
+-   [references/questions.md](references/questions.md) — **read this first when the user's request is vague, phrased as a question, or mentions a target, organism or compound class not covered above.** Indexed by question: generator choice, transforms, mode collapse, and what to do when no profile fits the target.
 -   [references/scoring_components.md](references/scoring_components.md) —
     components, parameters and transforms, taken from the REINVENT 4
     checkout's own `configs/SCORING.md`.

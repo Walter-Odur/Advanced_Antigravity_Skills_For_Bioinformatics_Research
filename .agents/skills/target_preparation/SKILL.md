@@ -141,6 +141,8 @@ uv run scripts/target_preparation_api.py generate-af2-script \
     --fasta target.fasta --method colabfold --output submit_af2.sh
 ```
 
+One script plus one guide (`submit_af2_SUBMIT.md`): the tools the cluster needs with probe and install commands, files to stage, the `sbatch`/`squeue`/`sacct` commands, and what each failure means. Point the user at it. `--module NAME` is repeatable and makes the job load the cluster's own build.
+
 ## Common Options
 
 -   `--output FILE`: **Required.** Output path.
@@ -167,6 +169,8 @@ uv run scripts/target_preparation_api.py generate-af2-script \
 
 ## Reference
 
+-   [references/questions.md](references/questions.md) — **read this first when the user's request is vague, phrased as a question, or mentions a target, organism or compound class not covered above.** Indexed by question, with worked examples across human, viral, bacterial, fungal and protozoan targets.
+-   [references/best_practices.md](references/best_practices.md) — structural biology practice for SBDD: resolution and R-free, which structure to choose, waters and metals, oligomeric state, protonation and flips, box size, and the limits of predicted models.
 -   [references/confidence.md](references/confidence.md) — pLDDT bands, the
     three B-factor scales, and how the verdict is reached.
 -   [references/citation.bib](references/citation.bib) — cite these for any

@@ -184,6 +184,7 @@ field, temperature and length of any simulation.
 
 ## Reference
 
+-   [references/questions.md](references/questions.md) — **read this first when the user's request is vague, phrased as a question, or mentions a target, organism or compound class not covered above.** Indexed by question, and it links to each sub-skill's own index.
 -   [references/admet_thresholds.md](references/admet_thresholds.md)
 -   [references/citation.bib](references/citation.bib) — the union of the
     four sub-skills' citations.
