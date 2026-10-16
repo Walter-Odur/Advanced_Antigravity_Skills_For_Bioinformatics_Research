@@ -14,6 +14,7 @@ functions the individual skills call, so a fix reaches every caller at once.
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -98,6 +99,28 @@ STAGES: dict[str, dict[str, Any]] = {
         "produces": "MDP files, workflow and submission scripts",
     },
 }
+
+
+def _write_slurm_pair(job_type: str, resources: Any,
+                      settings: dict[str, Any], destination: Path) -> Path:
+    """Write a SLURM script and its instructions into a stage directory.
+
+    Mirrors ``cli._common.emit_slurm_script``, but writes to an explicit
+    path rather than ``args.output``, because a pipeline stage chooses its
+    own filenames.
+    """
+    from ..hpc import generate_slurm_script
+    from ..hpc_instructions import instructions_path, submission_instructions
+
+    options = dict(settings)
+    guide = instructions_path(destination)
+    options["instructions"] = guide.name
+
+    path = write_text(generate_slurm_script(job_type, resources, options),
+                      destination, executable=True)
+    write_text(submission_instructions(job_type, resources, path, options),
+               guide)
+    return path
 
 
 def _stage_dir(root: Path, name: str) -> Path:
@@ -403,17 +426,16 @@ def cmd_run(args: argparse.Namespace) -> None:
             from ..targets.site import BindingSite
             kind, _ = find_vina()
             if kind == "none":
-                from ..hpc import SlurmResources, generate_slurm_script
-                script = generate_slurm_script(
+                from ..hpc import SlurmResources
+                path = _write_slurm_pair(
                     "vina-screen",
                     SlurmResources(job_name="vina", ngpu=0, gpu=None,
                                    ncpus=16, mem="32G", time="12:00:00",
                                    array="1-50"),
                     {"receptor": receptor, "ligand_dir": "ligands",
                      "site_config": site_file},
+                    stage_dir / "submit_vina.sh",
                 )
-                path = write_text(script, stage_dir / "submit_vina.sh",
-                                   executable=True)
                 artefacts["vina_script"] = str(path)
                 record("docking", "deferred", {
                     "reason": "AutoDock Vina is not installed here",
@@ -447,7 +469,21 @@ def cmd_run(args: argparse.Namespace) -> None:
         stage_dir = _stage_dir(root, "05_generative")
         from ..hpc import SlurmResources, generate_slurm_script
         from ..reinvent.config import build_config
+        # Reference the seeds relatively, with forward slashes. The config
+        # is generated here but submitted on a cluster: an absolute
+        # 'C:\Users\...' path makes the whole pipeline directory
+        # non-relocatable, and REINVENT fails at load rather than at
+        # submission, after the queue wait.
         seed_file = artefacts.get("seeds")
+        if seed_file:
+            try:
+                seed_file = Path(
+                    os.path.relpath(seed_file, stage_dir)
+                ).as_posix()
+            except ValueError:
+                # Different drive on Windows; an absolute path is the only
+                # thing that can work locally.
+                pass
         config = build_config(
             mode="staged_learning", generator="reinvent",
             scoring_profile=args.scoring_profile,
@@ -458,15 +494,14 @@ def cmd_run(args: argparse.Namespace) -> None:
         )
         config_path = write_text(config.toml, stage_dir / "reinvent.toml")
         write_json(config.as_dict(), stage_dir / "reinvent.meta.json")
-        script = generate_slurm_script(
+        script_path = _write_slurm_pair(
             "reinvent",
             SlurmResources(job_name="reinvent", gpu="a100", ngpu=1,
                            ncpus=8, mem="64G", time="24:00:00",
                            conda_env="reinvent4"),
             {"config": config_path.name, "log": "reinvent.log"},
+            stage_dir / "submit_reinvent.sh",
         )
-        script_path = write_text(script, stage_dir / "submit_reinvent.sh",
-                                  executable=True)
         artefacts["reinvent_config"] = str(config_path)
         artefacts["reinvent_script"] = str(script_path)
         record("generative", "prepared", {
@@ -525,14 +560,13 @@ def cmd_run(args: argparse.Namespace) -> None:
                         stage_dir / "run_md.py")
             write_text(generate_setup_shell(bundle), stage_dir / "setup_md.sh",
                         executable=True)
-            script = generate_slurm_script(
+            script_path = _write_slurm_pair(
                 "gromacs-md",
                 SlurmResources(job_name="md", gpu="a100", ngpu=1, ncpus=8,
                                mem="64G", time="48:00:00", conda_env="gromacs"),
                 {"production_ns": args.production_ns},
+                stage_dir / "submit_md.sh",
             )
-            script_path = write_text(script, stage_dir / "submit_md.sh",
-                                      executable=True)
             artefacts["md_script"] = str(script_path)
             record("dynamics", "prepared", {
                 "force_field": bundle["settings"]["force_field"],

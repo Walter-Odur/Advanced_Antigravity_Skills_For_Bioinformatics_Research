@@ -141,6 +141,35 @@ def emit_text(text: str, args: argparse.Namespace,
     return path
 
 
+def emit_slurm_script(job_type: str, resources: Any,
+                      args: argparse.Namespace,
+                      summary: Sequence[str] = (),
+                      settings: dict[str, Any] | None = None) -> Path:
+    """Write a SLURM script **and** the instructions for running it.
+
+    A script on its own leaves the reader to work out which tools the
+    cluster needs, how to install them, what to stage and what to type. The
+    instructions file answers all four, is named after the script, and sits
+    beside it so the pair travels together.
+    """
+    from ..hpc import generate_slurm_script
+    from ..hpc_instructions import instructions_path, submission_instructions
+
+    options = {k: v for k, v in (settings or {}).items() if v is not None}
+    # The script names its own instructions, so a failure in the job log
+    # points at the file that explains it.
+    guide = instructions_path(args.output)
+    options["instructions"] = guide.name
+
+    script = generate_slurm_script(job_type, resources, options)
+    path = write_text(script, args.output, executable=True)
+    write_text(submission_instructions(job_type, resources, path, options),
+               guide)
+
+    _print_summary(path, [*summary, f"  instructions: {guide.name}"], args)
+    return path
+
+
 def _print_summary(path: Path, summary: Sequence[str],
                    args: argparse.Namespace) -> None:
     if getattr(args, "quiet", False):

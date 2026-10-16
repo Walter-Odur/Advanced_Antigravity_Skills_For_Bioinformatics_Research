@@ -718,3 +718,39 @@ def test_wizard_mentions_itself_in_its_output(tmp_path):
         "--output", str(output))
     data = json.loads(output.read_text(encoding="utf-8"))
     assert "drug-discovery-wizard" in json.dumps(data)
+
+
+def test_wizard_pairs_every_cluster_script_with_instructions(tmp_path):
+    """A stage that defers to a cluster must say how to run it there.
+
+    A script on its own does not say which tools the cluster needs, how to
+    install them, what to stage or what to type, so each one is written
+    with a companion guide beside it.
+    """
+    from agskills.hpc_instructions import instructions_path
+
+    pdb = tmp_path / "receptor.pdb"
+    pdb.write_text(
+        "\n".join(
+            f"ATOM  {i:5d}  CA  ALA A{i:4d}    {i * 1.5:8.3f}"
+            f"{0.0:8.3f}{0.0:8.3f}  1.00 20.00           C"
+            for i in range(1, 31)
+        ) + "\nEND\n",
+        encoding="utf-8",
+    )
+    workdir = tmp_path / "pipeline"
+    assert run(wizard, "run", "--input-file", str(pdb),
+               "--stages", "dynamics", "--workdir", str(workdir),
+               "--output", str(tmp_path / "pipeline.json")) == 0
+
+    scripts = sorted(workdir.rglob("submit_*.sh"))
+    assert scripts, "the dynamics stage produced no submission script"
+    for script in scripts:
+        guide = instructions_path(script)
+        assert guide.is_file(), f"{script.name} has no companion guide"
+        text = guide.read_text(encoding="utf-8")
+        assert f"sbatch {script.name}" in text
+        assert "## 2. Tools the cluster must have" in text
+        assert "squeue" in text
+        # The script points back at the guide, so a job log says where to look.
+        assert guide.name in script.read_text(encoding="utf-8")

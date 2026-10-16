@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..hpc import JOB_TYPES, SlurmResources, generate_slurm_script
+from ..hpc import (CPU_ONLY_JOB_TYPES, JOB_TYPES, SlurmResources,
+                   generate_slurm_script)
 from ..io_utils import write_json, write_text
 from ..md.mdp import FORCE_FIELDS, WATER_MODELS, validate_mdp_file
 from ..md.workflow import (
@@ -18,6 +19,7 @@ from ._common import (
     add_output,
     build_root_parser,
     emit_json,
+    emit_slurm_script,
     emit_text,
     run_cli,
 )
@@ -149,6 +151,7 @@ def cmd_generate_hpc_script(args: argparse.Namespace) -> None:
         ncpus=args.ncpus, mem=args.mem, time=args.time, array=args.array,
         conda_env=args.conda_env, partition=args.partition,
         account=args.account, email=args.email,
+        module_loads=list(args.module_loads or []),
     )
     settings = {
         "config": args.config,
@@ -161,15 +164,19 @@ def cmd_generate_hpc_script(args: argparse.Namespace) -> None:
         "exhaustiveness": args.exhaustiveness,
         "fasta": args.fasta,
     }
-    script = generate_slurm_script(args.job_type, resources,
-                                   {k: v for k, v in settings.items()
-                                    if v is not None})
-    emit_text(script, args, executable=True, summary=[
+    # Report the resources the script actually requests, not the ones asked
+    # for: a CPU-only job type has its GPU request dropped, and a summary
+    # that still claimed a GPU would contradict the file beside it.
+    if args.job_type in CPU_ONLY_JOB_TYPES:
+        accelerator = "CPU only"
+    else:
+        accelerator = f"{args.ngpu}x{args.gpu or 'gpu'}"
+    emit_slurm_script(args.job_type, resources, args, summary=[
         f"SLURM script: {args.job_type} - {JOB_TYPES[args.job_type]}",
-        f"  {args.ngpu}x{args.gpu or 'gpu'}, {args.ncpus} CPU, {args.mem}, "
+        f"  {accelerator}, {args.ncpus} CPU, {args.mem}, "
         f"{args.time}" + (f", array {args.array}" if args.array else ""),
-        f"  submit with: sbatch {args.output}",
-    ])
+        f"  submit with: sbatch {Path(args.output).name}",
+    ], settings=settings)
 
 
 def _add_system_args(parser: argparse.ArgumentParser) -> None:
@@ -263,6 +270,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--array", help="SLURM array spec, e.g. 1-100%%10. "
                                    "Required for vina-screen.")
     p.add_argument("--conda-env")
+    p.add_argument("--module", action="append", dest="module_loads",
+                   metavar="NAME", default=[],
+                   help="A module to 'module load' inside the job, e.g. "
+                        "--module gromacs/2024.2. Repeatable. Always prefer "
+                        "the cluster's own module over a user-space "
+                        "install; run 'module avail' to see the names.")
     p.add_argument("--partition")
     p.add_argument("--account")
     p.add_argument("--email")

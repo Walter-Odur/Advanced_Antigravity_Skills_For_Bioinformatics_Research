@@ -43,13 +43,18 @@ JOB_SETTINGS = {
 }
 
 
-def _script(job_type: str, **resource_kwargs) -> str:
+def _script(job_type: str, *, instructions: str | None = None,
+            **resource_kwargs) -> str:
+    """Render one script. ``instructions`` is a setting, not a resource."""
     if job_type == "vina-screen":
         resource_kwargs.setdefault("array", "1-100")
         resource_kwargs.setdefault("ngpu", 0)
         resource_kwargs.setdefault("gpu", None)
+    settings = dict(JOB_SETTINGS[job_type])
+    if instructions:
+        settings["instructions"] = instructions
     return generate_slurm_script(job_type, _resources(**resource_kwargs),
-                                 JOB_SETTINGS[job_type])
+                                 settings)
 
 
 # ---------------------------------------------------------------------------
@@ -320,8 +325,35 @@ def test_unknown_job_type_lists_the_options():
 def test_script_documents_what_it_is_and_what_to_review(job_type):
     script = _script(job_type)
     assert JOB_TYPES[job_type].rstrip(".") in script
-    assert "Review the directives" in script
     assert "agskills" in script
+    # Partition and GPU names are site-specific, so the script has to say
+    # the directives need checking rather than implying they are ready.
+    assert "the directives above" in script
+    assert "site-specific" in script
+
+
+@pytest.mark.parametrize("job_type", sorted(JOB_TYPES))
+def test_script_names_its_instructions_when_given_one(job_type):
+    """A job log that says 'command not found' should say where to look."""
+    script = _script(job_type, instructions="submit_SUBMIT.md")
+    assert "submit_SUBMIT.md" in script
+    # And it must not be listed as if it were a job parameter.
+    settings_line = [line for line in script.splitlines()
+                     if line.startswith("# Settings:")]
+    assert not any("instructions=" in line for line in settings_line)
+
+
+@pytest.mark.parametrize("job_type", sorted(JOB_TYPES))
+def test_script_says_when_no_module_is_loaded(job_type):
+    """Silence about modules is the commonest reason a job cannot find its
+    tools: loading one on the login node does not carry into the job."""
+    bare = _script(job_type)
+    assert "No module is loaded" in bare
+
+    loaded = _script(job_type, module_loads=["gromacs/2024.2", "cuda/12.1"])
+    assert "module load gromacs/2024.2" in loaded
+    assert "module load cuda/12.1" in loaded
+    assert "No module is loaded" not in loaded
 
 
 def test_script_records_the_settings_it_was_built_from():
@@ -338,3 +370,110 @@ def test_script_logs_start_and_finish():
 
 def test_generation_is_deterministic():
     assert _script("gromacs-md") == _script("gromacs-md")
+
+
+# ---------------------------------------------------------------------------
+# Submission instructions
+#
+# A script on its own leaves four questions unanswered: which tools the
+# cluster needs, how to install them, what to stage, and what to type.
+# Every generated script gets a companion document that answers all four.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("job_type", sorted(JOB_TYPES))
+def test_every_job_type_has_a_guide(job_type):
+    from agskills.hpc_instructions import JOB_GUIDES
+
+    assert job_type in JOB_GUIDES, f"no guide for {job_type}"
+    guide = JOB_GUIDES[job_type]
+    assert guide.summary
+    assert guide.tools, f"{job_type} names no required tool"
+    for tool in guide.tools:
+        assert tool.probe, f"{job_type}/{tool.name} has no probe command"
+        assert tool.module_hint or tool.install, (
+            f"{job_type}/{tool.name} says neither how to find nor how to "
+            "install it"
+        )
+
+
+@pytest.mark.parametrize("job_type", sorted(JOB_TYPES))
+def test_instructions_answer_the_four_questions(job_type):
+    from agskills.hpc_instructions import submission_instructions
+
+    resources = _resources(
+        **({"array": "1-100", "ngpu": 0, "gpu": None}
+           if job_type == "vina-screen" else {}))
+    text = submission_instructions(job_type, resources, "submit.sh",
+                                   JOB_SETTINGS[job_type])
+
+    # 1. what it asks for, 2. tools, 3. inputs, 4. how to submit
+    for heading in ("## 1. What this job asks SLURM for",
+                    "## 2. Tools the cluster must have",
+                    "## 3. Files that must be in place",
+                    "## 4. Submit it"):
+        assert heading in text, f"{job_type} instructions lack {heading!r}"
+
+    assert "sbatch submit.sh" in text
+    assert "squeue" in text and "sacct" in text and "scancel" in text
+    assert "## If it fails" in text
+    # The resources quoted must be the ones actually requested.
+    assert f"`{resources.time}`" in text
+    assert f"`{resources.mem}`" in text
+
+
+def test_instructions_do_not_promise_a_gpu_to_a_cpu_job():
+    from agskills.hpc_instructions import submission_instructions
+
+    resources = _resources(array="1-100", ngpu=0, gpu=None)
+    text = submission_instructions("vina-screen", resources, "submit.sh",
+                                   JOB_SETTINGS["vina-screen"])
+    assert "CPU-only" in text
+    assert "a100" not in text
+    # An array job needs its own monitoring advice.
+    assert "array job" in text
+    assert "1-100" in text
+
+
+def test_instructions_name_the_conda_environment_to_create():
+    from agskills.hpc_instructions import submission_instructions
+
+    resources = _resources(conda_env="reinvent4")
+    text = submission_instructions("reinvent", resources, "submit.sh",
+                                   JOB_SETTINGS["reinvent"])
+    assert "conda create -n reinvent4" in text
+
+
+def test_instructions_tell_a_moduleless_script_how_to_get_modules():
+    from agskills.hpc_instructions import submission_instructions
+
+    bare = submission_instructions("gromacs-md", _resources(), "submit.sh",
+                                   JOB_SETTINGS["gromacs-md"])
+    assert "does **not** load any module" in bare
+    assert "--module" in bare
+
+    loaded = submission_instructions(
+        "gromacs-md", _resources(module_loads=["gromacs/2024.2"]),
+        "submit.sh", JOB_SETTINGS["gromacs-md"])
+    assert "module load gromacs/2024.2" in loaded
+
+
+def test_instructions_contain_no_leaked_format_escapes():
+    """A doubled %% belongs in argparse help, not in Markdown."""
+    from agskills.hpc_instructions import submission_instructions
+
+    for job_type in sorted(JOB_TYPES):
+        resources = _resources(
+            **({"array": "1-100", "ngpu": 0, "gpu": None}
+               if job_type == "vina-screen" else {}))
+        text = submission_instructions(job_type, resources, "submit.sh",
+                                       JOB_SETTINGS[job_type])
+        assert "%%" not in text, f"{job_type} instructions contain '%%'"
+
+
+def test_instructions_path_sits_beside_the_script():
+    from agskills.hpc_instructions import instructions_path
+
+    assert instructions_path("submit.sh").name == "submit_SUBMIT.md"
+    assert instructions_path("a/b/run_md.sh").as_posix() == \
+        "a/b/run_md_SUBMIT.md"

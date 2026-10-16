@@ -20,6 +20,7 @@ from ._common import (
     build_root_parser,
     compounds_from_args,
     emit_json,
+    emit_slurm_script,
     emit_text,
     run_cli,
 )
@@ -253,16 +254,13 @@ def cmd_generate_hpc_script(args: argparse.Namespace) -> None:
         ncpus=args.ncpus, mem=args.mem, time=args.time,
         conda_env=args.conda_env, partition=args.partition,
         account=args.account, email=args.email,
+        module_loads=list(getattr(args, "module_loads", None) or []),
     )
-    script = generate_slurm_script("reinvent", resources, {
-        "config": args.config,
-        "log": args.log or "reinvent.log",
-    })
-    emit_text(script, args, executable=True, summary=[
+    emit_slurm_script("reinvent", resources, args, summary=[
         f"REINVENT SLURM script for {args.config}",
         f"  {args.ngpu}x{args.gpu}, {args.ncpus} CPU, {args.mem}, {args.time}",
-        f"  submit with: sbatch {args.output}",
-    ])
+        f"  submit with: sbatch {Path(args.output).name}",
+    ], settings={"config": args.config, "log": args.log or "reinvent.log"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -399,6 +397,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mem", default="64G")
     p.add_argument("--time", default="24:00:00")
     p.add_argument("--conda-env", default="reinvent4")
+    p.add_argument("--module", action="append", dest="module_loads",
+                   metavar="NAME", default=[],
+                   help="A module to 'module load' inside the job, e.g. "
+                        "--module gromacs/2024.2. Repeatable. Always prefer "
+                        "the cluster's own module over a user-space "
+                        "install; run 'module avail' to see the names.")
     p.add_argument("--partition")
     p.add_argument("--account")
     p.add_argument("--email")
