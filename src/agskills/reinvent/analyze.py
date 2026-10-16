@@ -245,25 +245,44 @@ def analyze_results(csv_path: str | Path, *, top_n: int = 20,
                 "objective may be unreachable."
             )
 
+    # The scaffold *ratio* alone cannot diagnose collapse. One scaffold
+    # across five molecules is a ratio of 0.20 - the same as twenty
+    # scaffolds across a hundred - but the first is total mode collapse and
+    # the second is a healthy run. The absolute count is therefore checked
+    # first, and the ratio bands are only applied once there are enough
+    # molecules for a ratio to mean anything.
     diversity_note = ""
     if scaffold_ratio is not None:
-        if scaffold_ratio < 0.05:
+        head = (f"{n_scaffolds} scaffold(s) across {valid_structures} "
+                f"molecules ({scaffold_ratio:.1%})")
+        if n_scaffolds <= 1:
             diversity_note = (
-                f"Only {n_scaffolds} distinct Bemis-Murcko scaffold(s) across "
-                f"{valid_structures} molecules ({scaffold_ratio:.1%}). The "
-                "agent has collapsed onto very few frameworks; enable or "
-                "strengthen the diversity filter."
+                f"{head}. Every molecule shares a single Bemis-Murcko "
+                "framework: the agent has collapsed onto one scaffold and is "
+                "only decorating it. Enable the diversity filter, or raise "
+                "its bucket size if it is already on."
+            )
+        elif n_scaffolds <= 3 and valid_structures >= 10:
+            diversity_note = (
+                f"{head}. Only a handful of frameworks for this many "
+                "molecules; the agent has largely collapsed. Strengthen the "
+                "diversity filter."
+            )
+        elif valid_structures < 20:
+            diversity_note = (
+                f"{head}. Too few molecules to judge diversity by ratio - "
+                "read the scaffold list rather than this percentage. A short "
+                "run, or a heavily de-duplicated one, lands here."
+            )
+        elif scaffold_ratio < 0.05:
+            diversity_note = (
+                f"Only {head}. The agent has collapsed onto very few "
+                "frameworks; enable or strengthen the diversity filter."
             )
         elif scaffold_ratio < 0.20:
-            diversity_note = (
-                f"{n_scaffolds} scaffolds across {valid_structures} molecules "
-                f"({scaffold_ratio:.1%}): moderate diversity."
-            )
+            diversity_note = f"{head}: moderate diversity."
         else:
-            diversity_note = (
-                f"{n_scaffolds} scaffolds across {valid_structures} molecules "
-                f"({scaffold_ratio:.1%}): good scaffold diversity."
-            )
+            diversity_note = f"{head}: good scaffold diversity."
 
     return {
         "file": str(path),

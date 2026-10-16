@@ -15,8 +15,14 @@ Hydrogen bond donors and acceptors
     different rules were authored against different ones:
 
     * ``hbd`` / ``hba`` use RDKit's refined definitions
-      (``CalcNumHBD`` / ``CalcNumHBA``). These reproduce PubChem's
-      ``HBondDonorCount`` / ``HBondAcceptorCount``.
+      (``CalcNumHBD`` / ``CalcNumHBA``). ``hbd`` reproduces PubChem's
+      ``HBondDonorCount``. ``hba`` agrees with PubChem's
+      ``HBondAcceptorCount`` for most molecules but not all: measured
+      against ten marketed drugs it matches seven, and the three it does
+      not (aspirin 3 vs 4, ibuprofen 1 vs 2, atorvastatin 4 vs 6) all
+      carry a carboxylic acid, whose hydroxyl oxygen PubChem counts as an
+      acceptor and ``CalcNumHBA`` does not. Neither count is wrong; they
+      are different conventions, which is the reason both are reported.
     * ``hbd_lipinski`` / ``hba_lipinski`` use Lipinski's own definitions  - 
       donors are the sum of OH and NH groups, acceptors the sum of all N
       and O atoms (``CalcNumLipinskiHBD`` / ``CalcNumLipinskiHBA``).
