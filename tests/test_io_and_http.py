@@ -479,3 +479,76 @@ def test_a_real_404_is_a_typed_error_with_a_hint():
         client.fetch_text("/download/ZZZZ.pdb")
     assert "404" in str(excinfo.value)
     assert excinfo.value.hint
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit state across reboots
+# ---------------------------------------------------------------------------
+
+
+def test_rate_limit_state_from_a_previous_boot_is_discarded(tmp_path,
+                                                            monkeypatch):
+    """A monotonic timestamp is meaningless after a reboot.
+
+    polite-http records the time of the last request per host in
+    ``polite-http-<host>.lock``, using ``time.monotonic()``. That clock's
+    zero point is arbitrary and resets when the machine reboots, so a file
+    written before a reboot can hold a value far *ahead* of the current
+    clock. The limiter then waits until that time arrives.
+
+    Measured on this machine after a reboot: every host's state was between
+    121,000 and 747,000 seconds ahead - up to 8.6 days - and the first
+    request to any host blocked for that long. The request deadline cannot
+    help, because the sleep happens in the limiter before a request is
+    attempted.
+    """
+    import glob
+    import time
+
+    from agskills import http as http_module
+
+    monkeypatch.setattr(http_module.tempfile, "gettempdir",
+                        lambda: str(tmp_path))
+    monkeypatch.setattr(http_module, "_state_swept", False)
+
+    now = time.monotonic()
+    future = tmp_path / "polite-http-example.org.lock"
+    recent = tmp_path / "polite-http-files.rcsb.org.lock"
+    opaque = tmp_path / "polite-http-weird.example.lock"
+    future.write_text(str(now + 500_000.0), encoding="utf-8")
+    recent.write_text(str(now - 5.0), encoding="utf-8")
+    opaque.write_text("not-a-timestamp", encoding="utf-8")
+
+    http_module._discard_stale_rate_limit_state()
+
+    assert not future.exists(), "state from a previous boot was kept"
+    # State from this boot is the cross-process rate limit working; keeping
+    # it is the whole point of the file.
+    assert recent.exists(), "valid rate-limit state was deleted"
+    # Something this code does not understand is left for polite-http.
+    assert opaque.exists(), "an unparseable state file was deleted"
+
+    # The sweep runs once per process, so a second call is a no-op.
+    future.write_text(str(now + 500_000.0), encoding="utf-8")
+    http_module._discard_stale_rate_limit_state()
+    assert future.exists(), "the sweep ran more than once per process"
+    assert glob.glob(str(tmp_path / "polite-http-*.lock"))
+
+
+def test_constructing_a_client_sweeps_stale_state(tmp_path, monkeypatch):
+    """The sweep has to happen before the limiter reads the file."""
+    import time
+
+    from agskills import http as http_module
+
+    monkeypatch.setattr(http_module.tempfile, "gettempdir",
+                        lambda: str(tmp_path))
+    monkeypatch.setattr(http_module, "_state_swept", False)
+
+    stale = tmp_path / "polite-http-localhost.lock"
+    stale.write_text(str(time.monotonic() + 700_000.0), encoding="utf-8")
+
+    started = time.monotonic()
+    http_module.HttpClient("https://localhost:1", qps=10.0)
+    assert not stale.exists()
+    assert time.monotonic() - started < 10.0, "construction itself blocked"

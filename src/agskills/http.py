@@ -37,6 +37,7 @@ What the adapter adds on top of the package:
 
 from __future__ import annotations
 
+import glob
 import os
 import re
 import tempfile
@@ -116,6 +117,58 @@ def cache_dir() -> str:
     return base
 
 
+#: Where polite-http keeps its per-host rate-limit state: one file named
+#: ``polite-http-<host>.lock`` in the platform temp directory, holding the
+#: timestamp of the last request to that host.
+_RATE_LIMIT_STATE_GLOB = "polite-http-*.lock"
+
+#: Set once per process, so the sweep below costs one directory listing.
+_state_swept = False
+
+
+def _discard_stale_rate_limit_state() -> None:
+    """Delete rate-limit state that cannot belong to this boot.
+
+    The stored timestamps come from :func:`time.monotonic`, whose zero point
+    is arbitrary and **resets when the machine reboots**. A file written
+    before a reboot therefore holds a number with no relation to the current
+    clock, and when it happens to be larger the limiter concludes the next
+    request is due that far in the future and sleeps.
+
+    Observed on this machine: every host's state sat between 121,000 and
+    747,000 seconds ahead of ``time.monotonic()`` after a reboot - up to 8.6
+    days. The first request to any host blocked for that long, and the
+    bounded request deadline could not help, because the sleep happens in the
+    limiter before any request is attempted.
+
+    A timestamp in the future is impossible within one boot, so it is
+    unambiguously stale and the file is removed. State from this boot is
+    always in the past and is left alone, which preserves the cross-process
+    rate limit the file exists for.
+    """
+    global _state_swept
+    if _state_swept:
+        return
+    _state_swept = True
+
+    now = time.monotonic()
+    for path in glob.glob(os.path.join(tempfile.gettempdir(),
+                                       _RATE_LIMIT_STATE_GLOB)):
+        try:
+            with open(path, encoding="utf-8") as handle:
+                stamp = float(handle.read().strip())
+        except (OSError, ValueError):
+            # Unreadable or not a timestamp: a future release may store
+            # something else here, so leave it for polite-http to handle.
+            continue
+        # A small tolerance absorbs clock granularity rather than real drift.
+        if stamp > now + 1.0:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
 def _hint_for(status: int | None) -> str | None:
     if status == 403:
         return (
@@ -182,6 +235,7 @@ class HttpClient:
         # polite-http keys its rate-limit lock file on the hostname under the
         # platform temp directory, so concurrent skill invocations on one
         # machine share a single budget per host.
+        _discard_stale_rate_limit_state()
         self._client = _ph.HttpClient(
             base_url,
             qps=qps,
