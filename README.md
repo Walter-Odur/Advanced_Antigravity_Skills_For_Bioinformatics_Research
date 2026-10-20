@@ -1,102 +1,173 @@
-# Antigravity Drug Discovery Skills
+# Antigravity Skills for Biomedical Research
 
-Five agent skills for structure-based drug discovery, sharing one tested
-implementation.
+**Agentic skills for structure-based drug discovery** — tell
+[Antigravity](https://github.com/google-deepmind/science-skills) what you need
+in plain language, and it handles the computational pipeline from protein
+structure to docked, filtered, and optimised compounds.
 
-| Skill | Folder | Does |
-|---|---|---|
-| `target-preparation` | `target_preparation/` | Fetch, clean and assess protein structures; define docking sites |
-| `compound-screening` | `compound_screening/` | Search ChEMBL, COCONUT and ZINC; dock with Vina; two-tier ADMET screening |
-| `compound-synthesis` | `compound_synthesis/` | REINVENT 4 generative chemistry |
-| `md-simulation` | `md_simulation/` | GROMACS workflows and cluster submission scripts |
-| `drug-discovery-wizard` | `drug_discovery_wizard/` | Orchestrate the four above end to end |
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://docs.astral.sh/ruff/)
 
-Each skill's `SKILL.md` lives under `.agents/skills/<folder>/` and is the
-reference for using it. The science lives in one package, `agskills`, under
-`src/`.
+---
 
-**Not sure where to start?** Each skill ships a question index —
-`references/questions.md` — that maps the questions a newcomer actually asks
-("I only know my target's name", "aspirin fails the filter, is it broken?",
-"my docking scores are all the same") onto the command that answers them.
-106 questions across the five skills, each answer measured rather than
-asserted.
+## How It Works
 
-The skills are **organism-agnostic**: nothing in the code knows or cares
-which organism a structure came from. The worked examples span human, viral,
-bacterial, fungal and protozoan targets to make that concrete, and a test
-keeps it that way.
+These are **agent skills**, not command-line tools you type yourself. You prompt
+Antigravity in natural language — describe what you need — and the agent reads
+the skill instructions, picks the right one, runs the right commands, interprets
+the output, and reports back.
 
-Packaging follows the [Google DeepMind science-skills](https://github.com/google-deepmind/science-skills)
-bundle: `snake_case` folders with a `kebab-case` YAML `name:`, `scripts/`
-and `references/` beside each `SKILL.md`, `citation.bib` per skill, and
-`uv run` with PEP 723 inline dependencies as the invocation.
+You never need to remember a flag, a subcommand or a file format. The agent
+does.
 
-## Install
+### Example prompts
 
-Requires Python 3.10 or newer.
+> **"Prepare PDB entry 1ITF for docking"**
+>
+> Antigravity activates the **target-preparation** skill — fetches the
+> structure from RCSB PDB, cleans it, converts to PDBQT, assesses quality,
+> defines the binding site from the co-crystallised ligand, and reports the
+> result with every decision recorded.
 
-```bash
-# From the workshop root
-pip install -e ".[all]"
+> **"Find known active compounds against DprE1 from M. tuberculosis"**
+>
+> Antigravity activates **compound-screening** — searches ChEMBL for the
+> target, retrieves bioactivities filtered by potency, and returns the hits.
+
+> **"Screen these compounds for drug-likeness and toxicity alerts"**
+>
+> Antigravity runs the **two-tier ADMET battery** — Lipinski, Veber, Egan,
+> Ghose and Muegge rules at the appropriate strictness, plus PAINS, Brenk and
+> aggregator alerts — and reports which compounds passed, which failed, and why.
+
+> **"Dock the top 10 hits against the receptor we just prepared"**
+>
+> Antigravity calls AutoDock Vina with the receptor and binding site from the
+> earlier step, ranks the results, and flags any score differences under 1
+> kcal/mol as not meaningful.
+
+> **"Design new molecules around the best scaffold using REINVENT"**
+>
+> Antigravity activates **compound-synthesis** — configures a REINVENT 4
+> generative run with multi-objective scoring, prepares the seeds from the
+> active compounds, and either runs locally or writes a cluster submission
+> script.
+
+> **"Set up an MD simulation for the top hit at body temperature"**
+>
+> Antigravity activates **md-simulation** — generates a four-stage GROMACS
+> workflow (minimisation → NVT → NPT → production) with force-field-aware
+> settings, and writes a SLURM submission script.
+
+> **"Run the full drug discovery pipeline for PDB 6HEZ"**
+>
+> Antigravity activates the **drug-discovery-wizard** — orchestrates all four
+> skills across seven stages, with ADMET screening on both sides of generative
+> chemistry, and reports progress at each stage.
+
+---
+
+## The Five Skills
+
+```
+                         ┌────────────────────────┐
+                         │  drug-discovery-wizard  │
+                         │    (orchestrator)       │
+                         └───────────┬────────────┘
+                                     │ delegates to
+             ┌───────────┬───────────┼───────────┬───────────┐
+             ▼           ▼           ▼           ▼           ▼
+     ┌──────────┐ ┌────────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+     │  target  │ │ compound   │ │compound│ │  md    │ │ ADMET  │
+     │  prep    │→│ screening  │→│synthesis│→│  sim   │ │ tiers  │
+     └──────────┘ └────────────┘ └────────┘ └────────┘ └────────┘
+       PDB/AF2     ChEMBL/ZINC   REINVENT 4  GROMACS    RDKit
+       ESMFold     COCONUT/Vina              MDP gen    2-tier
 ```
 
-That installs the package plus every optional extra (docking, analysis and
-test dependencies). For the core only:
+| Skill | When Antigravity uses it |
+|---|---|
+| **Target Preparation** | You mention a PDB ID, UniProt accession, or amino-acid sequence and want a receptor ready for docking |
+| **Compound Screening** | You ask about compounds, actives, docking, binding affinity, drug-likeness or ADMET filtering |
+| **Compound Synthesis** | You want new molecules designed or an existing lead optimised |
+| **MD Simulation** | You want a molecular dynamics setup or a cluster submission script |
+| **Drug Discovery Wizard** | You want the end-to-end pipeline — the wizard delegates to the four skills above |
+
+Each skill's full instructions live in `.agents/skills/<skill>/SKILL.md`. The
+agent reads these automatically when it selects a skill. You do not need to read
+them yourself unless you want to understand what is happening under the hood.
+
+### Design principles
+
+- **Every decision is recorded.** The report names the source, the chains
+  retained, each heterogen removed with its reason, the B-factor scale
+  detected and the interpretation applied. A receptor can be reconstructed or
+  audited from the report alone.
+- **Ambiguity is refused, not guessed.** A gene name is rejected because it
+  maps to many structures across many organisms. A structure whose provenance
+  cannot be established is reported as indeterminate rather than graded on a
+  scale that may not apply.
+- **Nothing is organism-specific.** No code path inspects the source organism.
+  The worked examples span human, viral, bacterial, fungal and protozoan
+  targets to make that concrete, and a test keeps it that way.
+- **Output size is bounded.** Compact output by default so the agent's context
+  is not flooded. Verdicts are identical at every detail level; only the
+  per-compound payload changes.
+
+---
+
+## Setup
+
+### Install
+
+Requires **Python 3.10+**. Clone this repository into your Antigravity
+workspace:
 
 ```bash
+git clone https://github.com/Walter-Odur/Antigravity-Skills-For-Biomedical-Research.git
+cd Antigravity-Skills-For-Biomedical-Research
+
+# Full install (core + docking + analysis + tests)
+pip install -e ".[all]"
+
+# Or core only (rdkit + biopython)
 pip install -e .
 ```
 
-If you use `uv` rather than `pip`:
-
-```bash
-uv pip install -e ".[all]"
-```
-
-### Verify the installation
+### Verify
 
 ```bash
 pytest
-ag-compound-screening describe-tiers --output /tmp/tiers.json
 ```
 
-The test suite should report all tests passing in well under a minute. It
-needs no network access and no external binaries.
+The test suite needs no network access and no external binaries. It should
+pass in under a minute.
 
-## What is optional
+### What is optional
 
 The core runs on `rdkit` and `biopython` alone. Everything else degrades
-with a clear message rather than failing obscurely:
+gracefully — the agent gets a clear message about what is missing and suggests
+alternatives:
 
 | Tool | Needed for | Without it |
 |---|---|---|
-| `meeko`, `scipy`, `gemmi`, or Open Babel | PDBQT conversion | A cleaned PDB is still produced, and the report says a converter is missing |
-| AutoDock Vina | `dock` | Report says how to install it; use a cluster script instead |
-| GROMACS | *Running* an MD workflow | Generation is unaffected; it produces files |
-| REINVENT 4 + PyTorch + priors | `compound-synthesis run` | Config generation, seed preparation and result analysis all still work |
-| Internet access | Database queries, ESMFold | Offline subcommands are unaffected |
+| `meeko`, `scipy`, `gemmi`, or Open Babel | PDBQT conversion | A cleaned PDB is still produced; the agent reports a converter is missing |
+| AutoDock Vina | Docking | The agent suggests installing it or using a cluster script |
+| GROMACS | *Running* an MD workflow | File generation is unaffected — it produces files, not simulations |
+| REINVENT 4 + PyTorch + priors | Generative chemistry | Config generation, seed preparation and analysis still work |
+| Internet access | Database queries, ESMFold | Offline capabilities are unaffected |
 
-Check what is available:
-
-```bash
-ag-compound-synthesis check-setup --output setup.json
-ag-wizard plan --pdb-id 6HEZ --output plan.json
-```
-
-`plan` reports, per pipeline stage, whether this machine can run it and
-what is missing.
-
-### Installing the optional tools
+<details>
+<summary><strong>Installing optional tools</strong></summary>
 
 ```bash
-# PDBQT conversion (cross-platform, via pip)
+# PDBQT conversion
 pip install meeko scipy gemmi
 
-# AutoDock Vina. Not pip-installable on Windows: the vina module needs
-# Boost headers. Use conda, or download a binary release.
+# AutoDock Vina (not pip-installable on Windows — needs Boost headers)
 conda install -c conda-forge vina
-# or https://github.com/ccsb-scripps/AutoDock-Vina/releases
+# or: https://github.com/ccsb-scripps/AutoDock-Vina/releases
 
 # GROMACS
 conda install -c conda-forge gromacs
@@ -106,86 +177,160 @@ git clone https://github.com/MolecularAI/REINVENT4
 pip install -e REINVENT4
 export REINVENT_DIR=$PWD/REINVENT4
 # Prior models: https://doi.org/10.5281/zenodo.15641296
+
+# Diagnostic figures
+pip install "agskills[plots]"
 ```
 
-## Running the skills
+</details>
 
-Two equivalent ways. The console command, once installed:
+---
 
-```bash
-ag-target-preparation prepare-receptor --pdb-id 6HEZ --chain A \
-    --output work/receptor.json
-```
+## What Each Skill Can Do
 
-Or the skill script directly, which works from a checkout even before
-installing:
+### Target Preparation
 
-```bash
-python .agents/skills/target-preparation/scripts/target_preparation_api.py \
-    prepare-receptor --pdb-id 6HEZ --chain A --output work/receptor.json
-```
+Takes a protein target from a database identifier to a docking-ready receptor
+with a defined binding site.
 
-`--output` is required for every subcommand of every skill. Read the file
-it writes; the console summary is a convenience, not the result.
+**Just ask Antigravity:**
+- *"Prepare PDB 6HEZ chain A for docking"*
+- *"Fetch the AlphaFold model for UniProt P9WJA5 and assess its quality"*
+- *"I have this sequence — can you predict its structure and tell me if it's good enough for docking?"*
+- *"What ligands are in PDB 4EY7? Which one should I use for the binding site?"*
 
-## A short worked example
+**What happens behind the scenes:**
 
-```bash
-# 1. Receptor, binding site and a confidence report, in one step
-ag-target-preparation prepare-receptor \
-    --pdb-id 6HEZ --chain A --output work/receptor.json
+| Capability | Detail |
+|---|---|
+| Fetch structures | RCSB PDB by ID, AlphaFold DB by UniProt accession (resolves current model version), local files |
+| Clean receptors | Removes water, cryoprotectants, buffer ions; keeps catalytic metals; records every removal with its reason |
+| Preserve provenance | Retains `HEADER`, `TITLE`, `EXPDTA`, `CRYST1`, `REMARK 2 RESOLUTION` so the file stays self-describing |
+| Convert to PDBQT | Meeko preferred (better charges), Open Babel fallback; warns about approximated side chains *inside the docking box* |
+| Assess quality | Detects the B-factor scale (pLDDT 0–100, pLDDT 0–1, or experimental B-factors) from provenance, not magnitude; issues PROCEED / REFINE / STOP verdicts for predicted models |
+| Define binding site | From a co-crystallised ligand (gold standard), pocket residues, or whole-structure blind docking |
+| Cofactor awareness | Ranks heterogens by druggability, not size — FAD, heme and NADH are flagged, not selected |
+| Interface warning | Reports when a chain contributing to the pocket is removed (the obligate-oligomer trap) |
+| Structure prediction | ESMFold for ≤400 residues; generates SLURM scripts for ColabFold / AlphaFold2 for longer sequences |
 
-# 2. Known actives for the target
-ag-compound-screening query-chembl \
-    --target-id CHEMBL3804751 --pchembl-min 7 --output work/actives.json
+**The B-factor problem.** One column of a coordinate file carries different
+quantities depending on its source, and they run in opposite directions. A
+well-refined crystal has B-factors of 20–50; so does a poor predicted model's
+pLDDT. The skill reads provenance from the header rather than guessing from
+magnitude, because a magnitude rule rejects good crystal structures and
+approves bad predictions. The ESMFold API writes pLDDT between 0 and 1; the
+skill detects this and rescales, so a model with mean 0.84 is correctly read as
+84 pLDDT rather than being called unusable.
 
-# 3. Triage them, keeping a diverse set
-ag-compound-screening admet-filter \
-    --smiles "COc1cc2ncnc(Nc3cccc(Br)c3)c2cc1OC" --names hit1 \
-    --strictness relaxed --output work/triage.json
+### Compound Screening
 
-# 4. A generative run, configured and ready to submit
-ag-compound-synthesis generate-config \
-    --mode staged_learning --generator reinvent \
-    --scoring-profile anti-tb --num-steps 300 \
-    --output work/reinvent.toml
+Searches compound libraries, docks molecules, and screens them on ADMET
+properties.
 
-# 5. An MD setup at body temperature
-ag-md-simulation gmxapi-setup \
-    --pdb work/6HEZ_clean.pdb --ff charmm36 --temperature 310 \
-    --production-ns 100 --output work/md/run_md.py
-```
+**Just ask Antigravity:**
+- *"Find actives against CHEMBL3804751 with pChEMBL above 7"*
+- *"Search COCONUT for natural products with a benzimidazole core"*
+- *"Screen these SMILES for drug-likeness"*
+- *"Dock these 20 compounds against the receptor and rank them"*
 
-Or let the orchestrator sequence it:
+**What happens behind the scenes:**
 
-```bash
-ag-wizard run --pdb-id 6HEZ --chain A \
-    --chembl-target CHEMBL3804751 \
-    --stages target sourcing triage \
-    --workdir pipeline --output pipeline.json
-```
+| Capability | Detail |
+|---|---|
+| ChEMBL queries | Target search by name or accession; bioactivity retrieval filtered by pChEMBL, assay type and organism |
+| COCONUT | Natural product search by substructure, molecular formula or text |
+| ZINC | Verified bulk download URLs for purchasable compound subsets |
+| Docking | AutoDock Vina with automatic box placement from the binding site; re-docking validation |
+| ADMET screening | Two-tier battery: *relaxed* (lead-like) and *strict* (drug-like). Published rules always report their authors' thresholds — a tier changes which rules must pass, never redefines a violation |
+| Structural alerts | PAINS, Brenk and aggregator filters — flagging is distinct from rejecting |
+| Molecular descriptors | MW, LogP, TPSA, HBD, HBA, rotatable bonds, QED, synthetic accessibility, Fsp3, aromatic rings |
 
-## Output size and context cost
+### Compound Synthesis
 
-A `SKILL.md` is loaded every time its skill triggers, and the JSON a
-subcommand writes is read back by the caller, so both are paid for in
-tokens on every use. Three measures keep that bounded:
+Generates and optimises novel molecules with REINVENT 4.
 
--   **`--detail compact` is the default.** It carries verdicts, headline
-    numbers and the reasons behind them. `--detail full` adds every
-    individual check, parameter and descriptor. Measured on a 50-compound
-    strict screen: 8,346 bytes per compound at `full` against 637 at
-    `compact`, so roughly 2,090 tokens per compound against 160 - a 92%
-    saving on information that is rarely read.
--   **Results go to a file; stdout stays short.** A 300-compound screen
-    prints 15 lines, the same as a 50-compound one; the console summary does
-    not grow with the input. Read fields from the file with
-    `jq` or a short Python expression rather than printing it whole.
--   **Depth lives in `references/`**, read only on demand, so each
-    `SKILL.md` stays near 2,000 tokens.
+**Just ask Antigravity:**
+- *"Design new molecules around the best scaffold from the docking results"*
+- *"Do scaffold hopping on this lead compound"*
+- *"Set up a REINVENT run optimising for docking score and synthetic accessibility"*
 
-Verdicts, counts and ordering are identical at every detail level; only the
-per-compound payload changes.
+**What happens behind the scenes:**
+
+- **De novo design** — unrestricted generation from a prior
+- **Scaffold hopping** — constrained to a core with varied decorations
+- **R-group replacement** — systematic substitution at defined positions
+- **Linker design** — connecting two fragments with generated linkers
+- **Transfer learning** — fine-tuning the prior on known actives
+- **Multi-objective RL** — simultaneous optimisation of docking score, QED,
+  synthetic accessibility and custom scoring components
+- **Scaffold-diversity diagnostics** — Murcko decomposition and Tanimoto
+  clustering on REINVENT output
+
+### MD Simulation
+
+Generates GROMACS workflows and validated MDP files. This skill **produces
+files; it does not run simulations** — production MD is GPU work that belongs in
+a batch job.
+
+**Just ask Antigravity:**
+- *"Set up an MD simulation for this protein–ligand complex using CHARMM36"*
+- *"Generate a SLURM submission script for a 100 ns production run"*
+- *"Validate this MDP file against the AMBER force field"*
+
+**What happens behind the scenes:**
+
+- **Force-field-aware MDP generation** — CHARMM36 requires a force-switched
+  Lennard-Jones potential and no dispersion correction; AMBER requires a plain
+  cutoff with one. They are not interchangeable, and the skill enforces this.
+- **Four-stage workflow** — energy minimisation, NVT equilibration, NPT
+  equilibration, production MD, each with correct settings
+- **MDP validation** — cross-checks an existing MDP against a declared force
+  field
+- **SLURM script generation** — for GROMACS MD, REINVENT, AutoDock Vina batch
+  screening, ColabFold and AlphaFold2
+
+### Drug Discovery Wizard
+
+Orchestrates the four skills above across seven pipeline stages. It
+**delegates; it does not reimplement** — every stage calls the same code the
+individual skills call, so a correction reaches all callers.
+
+**Just ask Antigravity:**
+- *"Run the full drug discovery pipeline for PDB 6HEZ"*
+- *"What can this machine run? Show me the readiness plan"*
+- *"Resume the pipeline from the docking stage"*
+
+**The seven stages:** target preparation → compound sourcing → relaxed ADMET
+triage → docking → strict ADMET filtering → generative chemistry → MD setup
+
+---
+
+## Diagnostic Figures
+
+Every subcommand that writes a report can draw one alongside it:
+
+| Subcommand | What the figure shows |
+|---|---|
+| `prepare-receptor` | Per-residue trace, cleaning counts, ligand ranking with cofactors coloured apart, and the docking box drawn over the structure with the selected ligand in red |
+| `assess-structure` | Per-residue confidence with the pLDDT bands shaded and low-confidence regions marked, beside the band counts |
+| `admet-filter` | Outcome funnel, which checks compounds failed, how close compounds came to passing, and descriptor spread against the tier bounds |
+| `dock` | Ranked affinities with the 1 kcal/mol band marked, and pose spread within one compound |
+| `ag-wizard run` | Stage-by-stage progress with status |
+
+Two of these catch most problems. **Which checks compounds failed** makes a
+single check killing an entire set obvious at a glance. **The docking box
+panel** shows the box sitting on the ligand with receptor around it, which
+is the question most worth answering before committing a screen.
+
+Each figure is built from the report the subcommand already wrote, so it
+cannot disagree with the numbers. An advisory check is drawn in amber and
+labelled as not rejecting, because presenting it as a rejection would
+invert the meaning of the tier.
+
+matplotlib is optional. Without it a run proceeds normally and reports that
+the figure was skipped.
+
+---
 
 ## Configuration
 
@@ -193,64 +338,91 @@ All optional. Nothing is hardcoded to a particular machine.
 
 | Variable | Purpose |
 |---|---|
-| `AGSKILLS_USER_AGENT` | The User-Agent sent to public APIs. Set it to something that identifies you and includes a contact address |
-| `AGSKILLS_CACHE_DIR` | Where rate-limiter state is kept. Defaults to a per-user temporary directory |
+| `AGSKILLS_USER_AGENT` | User-Agent sent to public APIs. Set to something that identifies you |
+| `AGSKILLS_CACHE_DIR` | Where rate-limiter state is kept. Defaults to a per-user temp directory |
 | `REINVENT_DIR` | The REINVENT 4 checkout |
 | `REINVENT_PRIOR_BASE` | Where the `.prior` model files live |
 
-## Layout
+---
+
+## Repository Layout
 
 ```
 pyproject.toml              package metadata, dependencies, pytest config
 README.md                   this file
+LICENSE                     MIT
 src/agskills/               the shared implementation
   errors.py                 typed exceptions, each with an exit code
   io_utils.py               atomic UTF-8 / LF writes, filename safety
-  http.py                   rate-limited HTTP client with a bounded deadline
+  http.py                   rate-limited HTTP client with bounded deadline
   hpc.py                    SLURM script generation
   chem/                     descriptors, published rules, alerts, ADMET tiers
+    admet.py                two-tier ADMET battery
+    alerts.py               PAINS, Brenk, aggregator filters
+    descriptors.py          molecular property calculations
+    rules.py                Lipinski, Veber, Egan, Ghose, Muegge
+    smiles.py               SMILES handling and canonicalisation
   targets/                  fetch, clean, confidence, PDBQT, binding sites
-  libraries/                ChEMBL, COCONUT, ZINC
-  docking/                  AutoDock Vina
-  md/                       MDP generation and validation, GROMACS workflows
-  reinvent/                 REINVENT 4 setup, configs, scoring, analysis
+    fetch.py                PDB / AlphaFold DB retrieval
+    clean.py                receptor cleaning
+    quality.py              B-factor scale detection and pLDDT assessment
+    pdbqt.py                PDBQT conversion via Meeko or Open Babel
+    site.py                 binding-site definition and cofactor ranking
+    esmfold.py              ESMFold structure prediction
+  libraries/                compound database clients
+    chembl.py               ChEMBL target and bioactivity queries
+    coconut.py              COCONUT natural product search
+    zinc.py                 ZINC bulk download URL generation
+  docking/                  molecular docking
+    vina.py                 AutoDock Vina interface
+  md/                       molecular dynamics setup
+    mdp.py                  MDP generation and validation
+    workflow.py             GROMACS four-stage workflow
+  reinvent/                 generative chemistry
+    config.py               REINVENT 4 TOML config generation
+    priors.py               prior model management
+    scoring.py              scoring component setup
+    runner.py               REINVENT execution
+    analyze.py              output analysis and diversity diagnostics
   cli/                      one entry point per skill
-.agents/skills/             the shipped bundle
-  plugin.json               bundle manifest
+.agents/skills/             the skill bundle (what Antigravity reads)
+  plugin.json               bundle manifest (v2.1.0)
   SKILL_LICENSES.md         third-party data source terms
-  <skill>/SKILL.md          the skill's instructions
-  <skill>/scripts/          a thin PEP 723 launcher
-  <skill>/references/       citation.bib and on-demand depth
-tests/                      the test suite and its real data fixtures.
-                            Not shipped: tests confirm the skills work,
-                            they are not part of them
-verification/<skill>/TEST.md a hand-written verification protocol per skill.
-                            Also not shipped
-tools/                      generators for documentation derived from code
+  <skill>/SKILL.md          each skill's instructions for the agent
+  <skill>/scripts/          PEP 723 launcher scripts
+  <skill>/references/       citation.bib, questions.md, best_practices.md
+tests/                      21 test modules, real-data fixtures
+documentation/              detailed per-skill documentation (DOCX)
+verification/<skill>/       hand-written verification protocols
+tools/                      generators for derived documentation
 ```
+
+---
 
 ## Testing
 
 ```bash
-pytest                       # the default: hermetic, no network
+pytest                       # hermetic — no network, no external binaries
 pytest -v                    # with test names
 pytest -m network            # opt in to live API calls
-pytest -m requires_vina      # opt in to real docking, if Vina is installed
+pytest -m requires_vina      # opt in to real docking
 pytest --cov=agskills        # coverage
 ```
 
-The default run deselects anything needing the network, an external binary,
-or more than a few seconds. Capability-marked tests skip cleanly when the
-tool is absent, so an opt-in run is still informative on a machine that
-lacks it.
+The default run deselects anything needing the network, an external binary, or
+more than a few seconds. Capability-marked tests skip cleanly when the tool is
+absent.
 
-Tests run against real data rather than synthetic stand-ins: two
-experimental structures from the PDB, a real AlphaFold model, independently
-computed reference properties for ten marketed drugs, a REINVENT output
-CSV in the real column format, and authentic AutoDock Vina output. See
-`tests/conftest.py` for what each fixture is and why.
+Tests run against **real data**, not synthetic stand-ins: two experimental
+structures from the PDB, a real AlphaFold model, independently computed
+reference properties for ten marketed drugs, a REINVENT output CSV in the real
+column format, and authentic AutoDock Vina output.
 
 ### Question indexes
+
+Each skill ships a question index mapping the questions a newcomer actually asks
+onto the command that answers them — 106 questions across the five skills, each
+answer measured rather than asserted.
 
 | Index | Questions | Covers |
 |---|---:|---|
@@ -260,92 +432,111 @@ CSV in the real column format, and authentic AutoDock Vina output. See
 | [md_simulation](.agents/skills/md_simulation/references/questions.md) | 20 | force fields, the four stages, walltime, post-run checks |
 | [drug_discovery_wizard](.agents/skills/drug_discovery_wizard/references/questions.md) | 17 | stage selection, delegation, what to distrust |
 
-`target_preparation` also ships
-[best_practices.md](.agents/skills/target_preparation/references/best_practices.md):
-resolution and R-free, which structure to choose, waters and metals,
-oligomeric state and interface sites, protonation and amide flips, box size,
-and the documented limits of predicted models — 23 cited references.
+### Verification protocols
+
+Each skill has a hand-written verification protocol under `verification/`:
+
+| Protocol | Cases |
+|---|---|
+| [target_preparation](verification/target_preparation/TEST.md) | 14 — fetch, clean, PDBQT, three B-factor scales, binding sites, exit codes |
+| [compound_screening](verification/compound_screening/TEST.md) | 13 — descriptors vs PubChem, tier semantics, alerts, ChEMBL, ZINC, output size |
+| [compound_synthesis](verification/compound_synthesis/TEST.md) | 12 — TOML schema, transform directions, de-duplication, mode collapse |
+| [md_simulation](verification/md_simulation/TEST.md) | 11 — force-field non-bonded settings, staging, MDP validation, `-maxh` |
+| [drug_discovery_wizard](verification/drug_discovery_wizard/TEST.md) | 9 — per-stage readiness, delegation, deferral, relocatable artefacts |
+
+Every expected value was measured by running the command, including places
+where the skill *should* disagree with an outside reference.
+
+---
+
+## Scientific Conventions
+
+Worth knowing before interpreting any output:
+
+- **Molecular weight** is the average mass, as Lipinski's rule and PubChem both
+  mean. The monoisotopic mass is reported separately as `exact_mw`.
+- **A published rule always reports its authors' thresholds.** A screening tier
+  changes which rules must pass; it never redefines a violation.
+- **Gating against advisory.** Published risk *flags* (e.g. the Pfizer 3/75
+  criterion) are reported but do not reject a compound.
+- **Non-bonded settings belong to the force field.** CHARMM36 requires a
+  force-switched LJ potential and no dispersion correction; AMBER requires a
+  plain cutoff with one.
+- **A docking score is triage.** Differences under ~1 kcal/mol are not
+  meaningful. Correlation with measured affinity across unrelated chemotypes is
+  weak. Scoring functions predict poses better than affinities, and enrichment
+  better than either.
+- **pLDDT is not a B-factor.** For a predicted model, higher is better on a
+  0–100 scale. For a crystal structure, the column holds atomic displacement
+  parameters — lower is better, unbounded. The skills detect which they are
+  looking at.
+
+---
+
+## Output and Context Cost
+
+Every subcommand writes structured JSON to a file. The agent reads the fields
+it needs rather than printing the whole thing into the conversation.
+
+| Control | Effect |
+|---|---|
+| `--detail compact` (default) | Verdicts + headline numbers. ~160 tokens per compound |
+| `--detail full` | Every check, parameter and descriptor. ~2,090 tokens per compound |
+
+Verdicts, counts and ordering are identical at every detail level.
+
+---
+
+## Citations
+
+The methods these skills wrap, and the thresholds they apply, come from:
+
+- Lipinski CA et al. *Adv Drug Deliv Rev* 1997;23:3–25
+- Veber DF et al. *J Med Chem* 2002;45:2615–2623
+- Egan WJ et al. *J Med Chem* 2000;43:3867–3877
+- Ghose AK et al. *J Comb Chem* 1999;1:55–68
+- Muegge I et al. *J Med Chem* 2001;44:1841–1846
+- Hughes JD et al. *Bioorg Med Chem Lett* 2008;18:4872–4875
+- Baell JB, Holloway GA. *J Med Chem* 2010;53:2719–2740 (PAINS)
+- Brenk R et al. *ChemMedChem* 2008;3:435–444
+- Ertl P, Schuffenhauer A. *J Cheminform* 2009;1:8 (synthetic accessibility)
+- Bickerton GR et al. *Nat Chem* 2012;4:90–98 (QED)
+- Anderson AC. *Chem Biol* 2003;10:787–797 (SBDD process)
+- Berman HM et al. *Nucleic Acids Res* 2000;28:235–242 (Protein Data Bank)
+- Trott O, Olson AJ. *J Comput Chem* 2010;31:455–461 (AutoDock Vina)
+- Eberhardt J et al. *J Chem Inf Model* 2021;61:3891–3898 (Vina 1.2)
+- Huang J, MacKerell AD. *J Comput Chem* 2013;34:2135–2145 (CHARMM36)
+- Bernetti M, Bussi G. *J Chem Phys* 2020;153:114107 (C-rescale barostat)
+- Lin Z et al. *Science* 2023;379:1123–1130 (ESMFold)
+- Jumper J et al. *Nature* 2021;596:583–589 (AlphaFold)
+- Varadi M et al. *Nucleic Acids Res* 2024;52:D368–D375 (AlphaFold DB)
+- Zdrazil B et al. *Nucleic Acids Res* 2024;52:D1180–D1192 (ChEMBL)
+- Sorokina M et al. *J Cheminform* 2021;13:2 (COCONUT)
+- Loeffler HH et al. *J Cheminform* 2024;16:20 (REINVENT 4)
+- Warren GL et al. *J Med Chem* 2006;49:5912–5931 (docking assessment)
+- Feinstein WP, Brylinski M. *J Cheminform* 2015;7:18 (box sizing)
+- Madhavi Sastry G et al. *J Comput-Aided Mol Des* 2013;27:221–234 (preparation influence)
+- Olsson MHM et al. *J Chem Theory Comput* 2011;7:525–537 (PROPKA3)
+
+Individual thresholds carry their citation in the JSON output, so a result can
+be traced to its source. Each skill also ships `references/citation.bib`.
 
 In total the bundle carries **171 citation entries**, every one with a DOI
 resolved through Crossref and checked against the registered title, journal,
 volume and pages.
 
-### Verification protocols
+---
 
-Each skill also has a readable protocol under `verification/`:
+## Third-Party Licenses
 
-| Protocol | Covers |
-|---|---|
-| [target_preparation/TEST.md](verification/target_preparation/TEST.md) | 14 cases: fetch, clean, PDBQT, three B-factor scales, binding sites, exit codes |
-| [compound_screening/TEST.md](verification/compound_screening/TEST.md) | 13 cases: descriptors against PubChem, tier semantics, alerts, ChEMBL, ZINC, output size |
-| [compound_synthesis/TEST.md](verification/compound_synthesis/TEST.md) | 12 cases: TOML schema, transform directions, de-duplication, mode collapse |
-| [md_simulation/TEST.md](verification/md_simulation/TEST.md) | 11 cases: force-field-specific non-bonded settings, staging, MDP validation, `-maxh` |
-| [drug_discovery_wizard/TEST.md](verification/drug_discovery_wizard/TEST.md) | 9 cases: per-stage readiness, delegation, deferral, relocatable artefacts |
+The skills themselves are [MIT licensed](LICENSE). The tools and data sources
+they reach carry their own terms — see
+[SKILL_LICENSES.md](.agents/skills/SKILL_LICENSES.md) for the full table.
 
-Every expected value in them was measured by running the command, including
-the places where the skill *should* disagree with an outside reference —
-Crippen logP against PubChem's XLogP3, for instance. Work through one to
-satisfy yourself a skill is correct on your machine; read one to see what a
-correct result looks like.
+---
 
-They are not shipped inside `.agents/skills/`, and a test asserts both that
-every skill has one and that none leaks into the bundle.
+## Author
 
-## Regenerating derived documentation
+**Walter Odur**
 
-Threshold tables are generated from the code so they cannot drift:
-
-```bash
-python tools/generate_admet_reference.py
-```
-
-A test fails if a `SKILL.md` states a check count the registry does not
-perform, so forgetting to regenerate is caught rather than shipped.
-
-## Scientific conventions
-
-Worth knowing before interpreting any output:
-
-- **Molecular weight** is the average mass, as Lipinski's rule and PubChem
-  both mean. The monoisotopic mass is reported separately as `exact_mw`.
-- **A published rule always reports its authors' thresholds.** A screening
-  tier changes which rules must pass; it never redefines a violation. A
-  650 Da compound reports a molecular-weight violation at every tier.
-- **Gating against advisory.** Published risk *flags*, such as the Pfizer
-  3/75 criterion, are reported but do not reject a compound. Gating on them
-  would discard most lead-like chemistry.
-- **Non-bonded settings belong to the force field.** CHARMM36 requires a
-  force-switched Lennard-Jones potential and no dispersion correction;
-  AMBER requires a plain cutoff with one. They are not interchangeable.
-- **A docking score is triage.** Differences under about 1 kcal/mol are not
-  meaningful, and a Vina score is not a binding free energy.
-- **pLDDT is not a B-factor.** For a predicted model higher is better on a
-  0-100 scale; for a crystal structure the column holds atomic displacement
-  parameters, where lower is better and the scale is unbounded. The skills
-  detect which they are looking at.
-
-## Citations
-
-The methods these skills wrap, and the thresholds they apply, are from:
-
-- Lipinski CA et al. *Adv Drug Deliv Rev* 1997;23:3-25
-- Veber DF et al. *J Med Chem* 2002;45:2615-2623
-- Egan WJ et al. *J Med Chem* 2000;43:3867-3877
-- Ghose AK et al. *J Comb Chem* 1999;1:55-68
-- Muegge I et al. *J Med Chem* 2001;44:1841-1846
-- Hughes JD et al. *Bioorg Med Chem Lett* 2008;18:4872-4875
-- Baell JB, Holloway GA. *J Med Chem* 2010;53:2719-2740 (PAINS)
-- Brenk R et al. *ChemMedChem* 2008;3:435-444
-- Ertl P, Schuffenhauer A. *J Cheminform* 2009;1:8 (synthetic accessibility)
-- Bickerton GR et al. *Nat Chem* 2012;4:90-98 (QED)
-- Eberhardt J et al. *J Chem Inf Model* 2021;61:3891-3898 (AutoDock Vina)
-- Huang J, MacKerell AD. *J Comput Chem* 2013;34:2135-2145 (CHARMM36)
-- Bernetti M, Bussi G. *J Chem Phys* 2020;153:114107 (C-rescale)
-- Lin Z et al. *Science* 2023;379:1123-1130 (ESMFold)
-- Varadi M et al. *Nucleic Acids Res* 2022;50:D439-D444 (AlphaFold DB)
-- Zdrazil B et al. *Nucleic Acids Res* 2024;52:D1180-D1192 (ChEMBL)
-- Sorokina M et al. *J Cheminform* 2021;13:2 (COCONUT)
-- Loeffler HH et al. *J Cheminform* 2024;16:20 (REINVENT 4)
-
-Individual thresholds carry their citation in the JSON output, so a result
-can be traced to its source.
+Built during the [Google DeepMind Antigravity Workshop](https://github.com/google-deepmind/science-skills), 2026.
